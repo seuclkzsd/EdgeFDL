@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Feature request
+description: New fault types, measurements, vendors, integrations, platforms or interface changes
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check the [roadmap](https://github.com/seuclkzsd/EdgeFDL/blob/main/ROADMAP.md) first, including its
+        "Non-goals" section. A vendor command template can be pasted directly into the proposal below.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is your network and your operations workflow, and what is inconvenient or impossible today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: How EdgeFDL should support it; sketches of CLI options, REST fields, alarm content or commands are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Network and constraints
+      description: Typical number of devices and links, vendors and software versions, routing protocol, how the EMS is attached, limits on probe traffic or server resources.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Current alternatives
+      description: What you do today (other tools, scripts, manual steps) and how well it works.
+  - type: dropdown
+    id: help
+    attributes:
+      label: Would you like to help?
+      options:
+        - I can test it on a real network or provide field reports
+        - I can provide topologies, configurations or vendor command templates
+        - I can help implement it
+        - Not at the moment
+    validations:
+      required: true

@@ -1,0 +1,58 @@
+EdgeFDL
+Copyright 2026 seuclkzsd and the EdgeFDL contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+EdgeFDL is written in Python. The source code, the Web dashboard (edgefdl/core/web/index.html,
+which loads no third-party scripts, stylesheets or fonts), the demo topology and sample device
+configurations in configs/, the released model bundle and results in results/, and the figures and
+screenshots in docs/ are original work of the EdgeFDL contributors. No third-party source code is
+bundled, adapted or vendored. Two texts in the repository come from elsewhere: LICENSE is the
+Apache License 2.0 published by the Apache Software Foundation, and CODE_OF_CONDUCT.md is the
+Contributor Covenant 2.1 (https://www.contributor-covenant.org, CC BY 4.0), attributed in the file.
+
+The components below are not contained in this repository. They are installed by the user and keep
+their own licenses.
+
+
+Python packages imported at run time (installed with pip from requirements.txt)
+------------------------------------------------------------------------------
+NumPy (>= 1.19)                   BSD-3-Clause
+PyTorch (>= 1.10; CPU build is    BSD-3-Clause
+  sufficient)
+PyYAML (>= 5.3)                   MIT
+psutil (>= 5.7), optional         BSD-3-Clause
+                                      Used only for the process CPU and memory figures shown by the
+                                      dashboard and /api/status and measured by `python -m edgefdl
+                                      bench`; EdgeFDL runs without it.
+
+The published results were produced with Python 3.13 and PyTorch 2.9 (CPU). The HTTP server,
+REST API, Syslog and Webhook sinks use only the Python standard library.
+
+
+External programs invoked as separate processes (not linked, not distributed)
+-----------------------------------------------------------------------------
+The `netns` and `lxd` backends of the equivalent virtual network, and the real-stack lab container,
+run the following programs through their command-line interfaces. EdgeFDL neither links against
+them nor includes any of their code, and does not distribute them; they are installed from the
+operating system's packages. The `sim` backend, training, evaluation and the dashboard in simulation
+mode run none of them.
+
+FRRouting (zebra, ospfd, vtysh)   GPL-2.0-or-later
+iproute2 (ip, tc)                 GPL-2.0
+iputils (ping)                    BSD-3-Clause for ping; the iputils package also contains tools
+                                      under GPL-2.0-or-later
+traceroute                        GPL-2.0
+iperf3                            BSD-3-Clause
+procps (sysctl)                   GPL-2.0-or-later
+LXD (lxc command-line client)     Apache-2.0
+                                      `lxd` backend only.
+
+
+Development and test environment (not part of EdgeFDL, not distributed)
+-----------------------------------------------------------------------
+scripts/lab/Dockerfile describes a local test image that `scripts/lab.sh build` builds on the
+user's machine from the Debian 12 base image (debian:bookworm-slim) and Debian packages (frr,
+iperf3, traceroute, iproute2, iputils-ping, procps, python3, python3-yaml, python3-numpy,
+ca-certificates). Each package keeps its own license as recorded by Debian. No image is published
+or distributed by the EdgeFDL project. Docker itself is used only to build and run this image.

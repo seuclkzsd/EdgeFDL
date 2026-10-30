@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use EdgeFDL in research or engineering reports, please cite it as below."
+type: software
+title: "EdgeFDL: autonomous link-level fault detection and localization for edge networks"
+abstract: >-
+  EdgeFDL locates faulty links in edge networks (campus, branch and factory networks) from the
+  network-management server, read-only towards the devices and without production fault data.
+  For each network it builds an equivalent virtual network (an analytic simulator, Linux network
+  namespaces with FRR OSPF and tc, or LXD containers), enumerates the fault space, generates
+  trigger-aligned and domain-randomized samples, and trains a small Double/Dueling DQN agent with a
+  link-shared encoder and an active deep-probe action. Online, it measures the network every 5
+  seconds with light probes, and when an anomaly persists it raises one alarm per fault that names
+  the link and the fault type (link down, delay, loss, jitter, bandwidth degradation, route drift),
+  with evidence, vendor-specific troubleshooting commands and remediation actions rehearsed on the
+  virtual network. Alarms are exported through a Web dashboard, a REST API, Syslog, Webhook,
+  Prometheus metrics and CSV logs.
+authors:
+  - alias: seuclkzsd
+    website: "https://github.com/seuclkzsd"
+repository-code: "https://github.com/seuclkzsd/EdgeFDL"
+url: "https://github.com/seuclkzsd/EdgeFDL"
+license: Apache-2.0
+# version and date-released follow edgefdl/__init__.py and the CHANGELOG section of the release
+# (GOVERNANCE.md, "Releases"); both are set when the release is tagged.
+version: "0.1.0"
+date-released: "2026-10-30"
+keywords:
+  - network fault localization
+  - network tomography
+  - edge network
+  - network management
+  - reinforcement learning
+  - deep Q-network
+  - DDQN
+  - active measurement
+  - OSPF
+  - FRRouting
+  - fault injection
+  - network monitoring

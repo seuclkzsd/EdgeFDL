@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability (private report)
+    url: https://github.com/seuclkzsd/EdgeFDL/security/advisories/new
+    about: Please do not disclose vulnerabilities in public issues; use GitHub's private vulnerability reporting.
+  - name: Documentation
+    url: https://github.com/seuclkzsd/EdgeFDL/blob/main/docs/index.md
+    about: Quick start, deployment, API, architecture, algorithms, results and comparison.

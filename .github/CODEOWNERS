@@ -1,0 +1,26 @@
+# Review assignment (https://docs.github.com/articles/about-code-owners).
+# The last matching pattern takes precedence. Roles and decision rules: GOVERNANCE.md.
+
+# Default owner of every file.
+*                                   @seuclkzsd
+
+# Detection, diagnosis and alarm logic, fault semantics and evaluation. Changes here need a test and a
+# re-run of the robustness criteria (GOVERNANCE.md, "Decision rules"); add the domain reviewers here
+# once they are appointed.
+/edgefdl/core/                      @seuclkzsd
+/edgefdl/agent/                     @seuclkzsd
+/edgefdl/faults/                    @seuclkzsd
+/edgefdl/robust.py                  @seuclkzsd
+/edgefdl/bench.py                   @seuclkzsd
+/scripts/compare_robust.py          @seuclkzsd
+
+# Released model bundle and measured results (numbers in README and docs come from here).
+/results/                           @seuclkzsd
+
+# Licensing and governance documents.
+/LICENSE                            @seuclkzsd
+/NOTICE                             @seuclkzsd
+/GOVERNANCE.md                      @seuclkzsd
+/MAINTAINERS.md                     @seuclkzsd
+/SECURITY.md                        @seuclkzsd
+/.github/                           @seuclkzsd

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Report from a real network
+description: Tell us how EdgeFDL behaved on a network you operate, whether it was right or wrong
+title: "[Field] "
+labels: ["field-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from real edge networks are the most valuable evidence for EdgeFDL; thank you. Requirements are in
+        [CONTRIBUTING.md, "Field reports and topologies from real networks"](https://github.com/seuclkzsd/EdgeFDL/blob/main/CONTRIBUTING.md#field-reports-and-topologies-from-real-networks).
+        **Remove sensitive data before posting**: replace device names, site names and IP addresses consistently
+        (the same real value always becomes the same placeholder) and delete passwords, keys, SNMP communities and
+        user names. Post only what the owner of the network allows you to share.
+  - type: dropdown
+    id: network_type
+    attributes:
+      label: Type of network
+      options:
+        - Campus
+        - Branch office
+        - Factory or industrial site
+        - Laboratory or test network
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: topology
+    attributes:
+      label: Topology
+      description: |
+        Number of routers, switches and hosts; number of links and their speeds; redundancy (backup links, rings);
+        routing protocol and areas; where the EMS is attached. An anonymized topology file in the format of
+        `configs/demo_topology.yaml` is welcome.
+      placeholder: |
+        1 core, 2 aggregation and 6 access routers, about 40 monitored hosts
+        12 router-router links (1 Gbps), 2 backup links (100 Mbps), single OSPF area
+        EMS attached to the core router over a 1 Gbps uplink
+    validations:
+      required: true
+  - type: textarea
+    id: vendors
+    attributes:
+      label: Vendors and software versions
+      placeholder: |
+        Huawei AR6280, VRP V300R022
+        H3C MSR3620, Comware 7.1
+    validations:
+      required: true
+  - type: textarea
+    id: deployment
+    attributes:
+      label: How EdgeFDL ran
+      description: |
+        Version (`python -m edgefdl --version`), backend, how the model was trained (demo bundle or trained on your
+        topology, sample count), whether on-site baseline learning was used (`serve --learn-rounds`), measurement
+        interval, how long it ran, and the alarm sinks used.
+    validations:
+      required: true
+  - type: textarea
+    id: reality
+    attributes:
+      label: What happened in reality
+      description: |
+        The ground truth: which link or device failed or degraded, the kind of fault, when it started and ended, and
+        how you know (ticket, device log, maintenance window, manual test). Write "no fault" if the network was healthy.
+    validations:
+      required: true
+  - type: textarea
+    id: reported
+    attributes:
+      label: What EdgeFDL reported
+      description: Alarm type, link, severity, time to alarm and time to clear, the evidence shown, and whether the suggested commands helped.
+    validations:
+      required: true
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      multiple: true
+      options:
+        - Correct alarm (right link and right fault type)
+        - Right link, wrong fault type
+        - Wrong link
+        - Fault missed (no alarm)
+        - False alarm (no fault present)
+        - Alarm not cleared after repair, or cleared too early
+        - No fault occurred and EdgeFDL stayed quiet
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (sensitive data removed)
+      description: Rows of `alarm_log.csv` and `measure_log.csv` around the event, or attached files. Compressed files up to 25 MB can be attached.
+      render: text
+  - type: dropdown
+    id: citation
+    attributes:
+      label: May we cite this report?
+      description: Accepted reports may be summarized in the documentation and credited in CHANGELOG.md.
+      options:
+        - Yes, anonymized, with credit to the name given below
+        - Yes, anonymized, without credit
+        - No, for the maintainers' analysis only
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: Credit
+      description: Person, organization or project name to credit, if any.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Confirmation
+      options:
+        - label: The owner of the network allows me to share this information
+          required: true
+        - label: I replaced names and addresses and removed passwords, keys and SNMP communities
+          required: true

@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+name: Bug report
+description: Wrong, missed or false alarm, crash, installation problem, dashboard or API error
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. Please check that the problem still occurs with the latest release.
+        **Do not report security vulnerabilities here**; follow
+        [SECURITY.md](https://github.com/seuclkzsd/EdgeFDL/blob/main/SECURITY.md) to report them privately.
+        Logs and topology files describe your network: replace device names, site names and IP addresses
+        before posting. For results from a production network, the "Report from a real network" template
+        asks for the right details.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of problem
+      options:
+        - Wrong alarm (wrong link or wrong fault type)
+        - Missed fault (no alarm)
+        - False alarm (alarm without a fault)
+        - Alarm not cleared after repair, or cleared too early
+        - Crash or error message
+        - Installation or dependency problem
+        - Dashboard, REST API, Prometheus, Syslog or Webhook output
+        - Real-stack backend (netns, lxd) or lab container
+        - Performance or resource use
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version and installation
+      description: |
+        Paste the output of `python -m edgefdl --version`, the commit if you run from a clone, and how you installed
+        the dependencies (pip, conda, CPU-only PyTorch).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python and PyTorch versions, CPU, backend (`sim`, `netns`, `lxd`), and the size of the topology.
+      placeholder: |
+        OS: Ubuntu 24.04
+        Python 3.12, PyTorch 2.9 (CPU)
+        Backend: sim
+        Topology: configs/demo_topology.yaml (12 devices, 15 links)
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Commands and inputs
+      description: |
+        The full command line (for example `python -m edgefdl serve ...`), the HTTP requests if relevant
+        (for example `POST /api/inject {"type": "loss", "link": "L4", "value": 0.1}`), and the topology or
+        intake file you used, or which file from `configs/`. Attach small files directly.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: For alarms, the fault that was present (type, link, value, start time) or that no fault was present.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: |
+        The alarm or error you got: the relevant entries of `/api/alarms` or rows of `alarm_log.csv`, the error
+        message and traceback, or a screenshot of the dashboard.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Measurement log (optional)
+      description: Rows of `measure_log.csv` around the event (a few rounds before and after), with addresses and names replaced.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmation
+      options:
+        - label: I reproduced the problem with the latest release
+          required: true
+        - label: The files and logs I attached contain no passwords, keys or SNMP communities, and I may share them
+          required: true
