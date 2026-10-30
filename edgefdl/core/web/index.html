@@ -73,7 +73,7 @@ button.danger{border-color:var(--bad);color:var(--bad)}
   <div class="kpis">
     <div class="kpi" id="k-up"><b>-</b><span>运行时长</span></div>
     <div class="kpi" id="k-round"><b>-</b><span>测量轮次</span></div>
-    <div class="kpi" id="k-inf"><b>-</b><span>单轮推理 p99 (≤100ms)</span></div>
+    <div class="kpi" id="k-inf"><b>-</b><span>单次前向推理 p99 (≤100ms)</span></div>
     <div class="kpi" id="k-bw"><b>-</b><span>测量带宽占用 (&lt;5%)</span></div>
     <div class="kpi" id="k-cpu"><b>-</b><span>进程 CPU / 内存</span></div>
     <div class="kpi" id="k-al"><b>-</b><span>告警 / 已过滤</span></div>
@@ -138,7 +138,7 @@ button.danger{border-color:var(--bad);color:var(--bad)}
 <script>
 const $ = s => document.querySelector(s);
 const NS = "http://www.w3.org/2000/svg";
-let TOPO = null, SEL = null, LAST = null;
+let TOPO = null, SEL = null, LAST = null, TYPE_CN = {normal:"正常"};
 const UNIT = {link_down:["", 1], delay:["ms（单向附加）", 30], loss:["丢包率 0~1", 0.1], jitter:["ms", 15],
               bandwidth:["剩余比例 0~1", 0.2], route_drift:["开销倍率", 10]};
 const ROLE_COLOR = {router:"#1f6feb", switch:"#1f6feb", host:"var(--host)", ems:"var(--ems)"};
@@ -147,6 +147,12 @@ function el(tag, attrs, parent){const e=document.createElementNS(NS, tag);for(co
 function esc(s){return String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h${m}m`:`${m}m${s%60}s`;}
 function ts(t){return new Date(t*1000).toLocaleTimeString("zh-CN",{hour12:false});}
+// 接口只接受同源的 JSON POST（跨站防护），须带 Content-Type
+async function post(path, body){
+  const r = await fetch(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  let j = {}; try{ j = await r.json(); }catch(e){ j = {error:`HTTP ${r.status}`}; }
+  return j;
+}
 
 async function init(){
   TOPO = await (await fetch("/api/topology")).json();
@@ -170,14 +176,14 @@ async function init(){
   }
   const ls=$("#inj-link"), ty=$("#inj-type");
   TOPO.links.forEach(l=>ls.add(new Option(`${l.id} ${l.a}-${l.b}`, l.id)));
-  TOPO.fault_types.forEach(f=>ty.add(new Option(f.label, f.id)));
+  TOPO.fault_types.forEach(f=>{ty.add(new Option(f.label, f.id)); TYPE_CN[f.id]=f.label;});
   const upd=()=>{const u=UNIT[ty.value];$("#inj-unit").textContent=u[0];$("#inj-val").value=u[1];$("#inj-val").disabled=ty.value==="link_down";};
   ty.onchange=upd; upd();
   $("#btn-inj").onclick=async()=>{
-    const r=await fetch("/api/inject",{method:"POST",body:JSON.stringify({link:ls.value,type:ty.value,value:+$("#inj-val").value})});
-    const j=await r.json(); $("#inj-msg").textContent = j.ok?`已注入：${j.label}`:`失败：${j.error}`;
+    const j=await post("/api/inject",{link:ls.value,type:ty.value,value:+$("#inj-val").value});
+    $("#inj-msg").textContent = j.ok?`已注入：${j.label}`:`失败：${j.error}`;
   };
-  $("#btn-clr").onclick=async()=>{await fetch("/api/clear",{method:"POST",body:"{}"});$("#inj-msg").textContent="已清除全部故障";};
+  $("#btn-clr").onclick=async()=>{const j=await post("/api/clear",{});$("#inj-msg").textContent=j.ok?"已清除全部故障":`失败：${j.error}`;};
   tick(); setInterval(tick, 1000); setInterval(series, 2000);
 }
 
@@ -227,7 +233,7 @@ function renderAlarm(s){
     <div class="atitle">${esc(a.node ? "设备 "+a.node : a.link_id)} ${esc(a.fault_type_cn)}</div>
     <div class="meta">${esc(a.endpoints)}${a.site?" · "+esc(a.site):""}</div>
     <div class="conf"><div style="width:${Math.round(a.confidence*100)}%"></div></div>
-    <div class="meta">置信度 ${(a.confidence*100).toFixed(0)}% · 推理 ${a.infer_ms} ms · 追加精测 ${a.probes_used} 次 · 备选：${(ev.candidates||[]).slice(1).map(c=>esc(`${c.link||""} ${c.type}`)).join("，")||"-"}</div>
+    <div class="meta">置信度 ${(a.confidence*100).toFixed(0)}% · 推理 ${a.infer_ms} ms · 追加精测 ${a.probes_used} 次 · 备选：${(ev.candidates||[]).slice(1).map(c=>esc(c.link?`${c.link} ${TYPE_CN[c.type]||c.type}`:(TYPE_CN[c.type]||c.type))).join("，")||"-"}</div>
     <div style="margin-top:10px"><b>研判依据</b><ul class="ev">${(ev.items||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
     <div class="steps"><b>处置建议</b>${(adv.steps||[]).map((st,i)=>`<div class="step">${i+1}. ${esc(st.step)}${(st.cmds||[]).map(c=>`<div class="cmd">${esc(c)}</div>`).join("")}</div>`).join("")}</div>
     ${adv.rehearsal?`<div class="reh">等价网络预演：${esc(adv.rehearsal.action)} → <span class="${adv.rehearsal.feasible?"ok":"bad"}">${adv.rehearsal.feasible?"可行":"不可行"}</span>，${esc(adv.rehearsal.detail)}</div>`:""}
@@ -236,13 +242,13 @@ function renderAlarm(s){
 }
 
 async function history(){
-  const h = await (await fetch("/api/alarms?n=12")).json();
+  let h; try{ h = await (await fetch("/api/alarms?n=12")).json(); }catch(e){ return; }
   $("#hist").innerHTML = h.map(a=>`<tr><td>${esc(a.alarm_id)}</td><td>${ts(a.ts)}</td><td>${esc(a.fault_type_cn)}</td><td>${esc(a.link_id)}</td><td>${(a.confidence*100).toFixed(0)}%</td><td class="${a.cleared_ts?"ok":"bad"}">${a.cleared_ts?"已恢复":"活动"}</td></tr>`).join("");
 }
 
 async function series(){
   if(!SEL) return;
-  const d = await (await fetch("/api/series?link="+SEL)).json();
+  let d; try{ d = await (await fetch("/api/series?link="+SEL)).json(); }catch(e){ return; }
   const l = TOPO.links.find(x=>x.id===SEL);
   $("#sel-title").textContent = `链路 ${SEL} 测量（${l.a} ↔ ${l.b}，${l.bw_mbps}Mbps，cost ${l.cost}）`;
   const svg=$("#spark"); svg.innerHTML="";
@@ -255,7 +261,8 @@ async function series(){
     pts.forEach((p,j)=>{ if(p.rtt==null) el("circle",{cx:(j/(Math.max(n-1,1)))*400,cy:104,r:2.5,fill:"var(--bad)"},svg); });
   });
   const st = LAST && LAST.link_state[SEL];
-  $("#sel-meta").innerHTML = keys.map((k,i)=>{const p=d[k][d[k].length-1]||{};return `<span style="color:${colors[i%3]}">■</span> ${esc(k)} RTT ${p.rtt??"不可达"} ms 丢包 ${p.loss!=null?(p.loss*100).toFixed(0)+"%":"-"}`;}).join("<br>")
+  $("#sel-meta").innerHTML = keys.map((k,i)=>{const p=d[k][d[k].length-1]||{};const rtt = p.rtt!=null ? `${p.rtt} ms` : (p.loss!=null ? "不可达" : "-");
+    return `<span style="color:${colors[i%3]}">■</span> ${esc(k)} RTT ${rtt} 丢包 ${p.loss!=null?(p.loss*100).toFixed(0)+"%":"-"}`;}).join("<br>")
     + `<br>纵轴上限 ${mx.toFixed(1)} ms · 红点=不可达 · OSPF ${st?(st.adj_up?"邻接正常":"邻接断开")+" cost "+st.cost:"-"}`;
 }
 init();

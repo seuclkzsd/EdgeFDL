@@ -319,7 +319,7 @@ class ResidualTest(unittest.TestCase):
 
 
 MODEL = next((p for p in (os.path.join(os.path.dirname(__file__), "..", *r, "model.pt")
-                          for r in (("runs", "v6"),))       # 本地训练目录
+                          for r in (("results",), ("runs", "v6")))  # 仓库发布的模型 / 本地训练目录
               if os.path.exists(p)), "")
 
 

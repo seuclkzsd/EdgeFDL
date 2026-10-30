@@ -9,13 +9,15 @@
 持续出现新的、有直接证据的结论即追加告警（复核更严）。各告警按其链路自身的逐轮证据（相对原始基线）逐条恢复，
 其余告警保持；全网恢复时清除证据已消失或无法跟踪的告警。multi=False 时与单告警版本行为完全一致。
 
-单线程测量循环 + 线程安全快照，供 Web/API 读取。所有异常被捕获并计数，保证 7×24 不中断。
+单线程测量循环 + 线程安全快照，供 Web/API 读取。所有异常被捕获并计数，保证 7×24 不中断；告警先登记再落盘、外发，
+任一输出通道出错只计入 errors，不影响告警的发出与恢复。处置建议的预演计入其余活动告警，告警增减后重新预演。
 """
 from __future__ import annotations
 
 import copy
 import math
 import os
+import sys
 import threading
 import time
 import traceback
@@ -31,7 +33,7 @@ from ..faults.model import CATEGORY
 from ..measure.model import MeasurePlan
 from ..measure.store import AlarmStore, CsvStore
 from ..topology import Topology
-from .alarms import SEVERITY
+from .alarms import SEVERITY, json_safe
 from .denoise import Detector
 
 
@@ -127,7 +129,8 @@ class Engine:
         self.errors = 0
         self.suppressed = 0
         self.started = time.time()
-        self.id_prefix = f"A{int(self.started) % 100000:05d}{os.getpid() % 100:02d}"   # 同一秒启动的多个引擎不重号
+        # 告警号前缀：启动时刻（Unix 秒）+ 随机实例号，不同运行（含同一秒启动的多个引擎）的告警号不重复
+        self.id_prefix = f"A{int(self.started)}-{os.urandom(3).hex()}"
         self.round_ms: deque = deque(maxlen=200)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -462,12 +465,14 @@ class Engine:
                 return
             self._trk[aid]["probed"] = self.round
             self.extra_probes += 1
-        d = self.enc.deep(self._probe(lid))
-        li = self.enc.lidx[lid]
+        dp = self._probe(lid)
+        d = self.enc.deep(dp)
         if a["fault_type"] == "loss":             # 精测丢包按链路两端设备的背景丢包率放宽（ICMP 限速同样作用于精测）
             ends = [ti for ti, t in enumerate(self.enc.targets) if t.link == lid]   # 精测应答来自链路两端设备
             p0 = max([max(self.enc.base.loss[t], self._bg[t]) for t in ends] + [0.0])
             ev = bool(d[1] > 0.5 or d[2] > 0.02 + 2 * p0)
+        elif a["fault_type"] == "bandwidth" and not math.isfinite(dp.bw_mbps):
+            ev = None                             # 精测未测得带宽（真实协议栈 iperf3 失败）：无从判断
         else:
             ev = deep_evidence(d, a["fault_type"])
         with self.lock:
@@ -731,13 +736,10 @@ class Engine:
             return self._raise_node(res, st)
         if res["type"] == "loss" and not res.get("secondary"):     # 追加告警是并存的另一处故障，不算轮换
             self.loss_churn.append((self.round, res["link"]))
-        self.alarm_seq += 1
         lid = res["link"]
         l = self.topo.link(lid)
-        cur_cost = None
-        if self.window and lid in self.window[-1].lsdb:
-            cur_cost = self.window[-1].lsdb[lid].cost
-        adv = advise(self.topo, res["type"], lid, cur_cost)
+        adv = self._advice(res["type"], lid)
+        self.alarm_seq += 1                       # 告警构造完成才占用序号（alarm_seq 即已发出的告警数）
         sites = sorted({s for s in (self.topo.nodes[l.a].site, self.topo.nodes[l.b].site) if s})
         alarm = dict(alarm_id=f"{self.id_prefix}-{self.alarm_seq:04d}", event="raise",
                      severity=SEVERITY.get(res["type"], "minor"), category=CATEGORY[res["type"]],
@@ -754,10 +756,10 @@ class Engine:
                                         + ("，扣除已有告警后发现" if res.get("secondary") else "")))
 
     def _raise_node(self, res: Dict, st: Dict):
-        self.alarm_seq += 1
         n = res["node"]
         nd = self.topo.nodes[n]
-        adv = advise_node(self.topo, n)
+        adv = self._advice("node_down", res["link"], node=n)
+        self.alarm_seq += 1
         alarm = dict(alarm_id=f"{self.id_prefix}-{self.alarm_seq:04d}", event="raise",
                      severity=SEVERITY["node_down"], category=CATEGORY["node_down"],
                      fault_type="node_down", fault_type_cn="设备宕机", link_id=res["link"], node=n, links=res["links"],
@@ -771,31 +773,73 @@ class Engine:
         self.events.appendleft(dict(ts=time.time(), round=self.round, kind="alarm",
                                     msg=f"告警 {alarm['alarm_id']}：设备 {n} 宕机（{res['link']} 全部中断）"))
 
+    # ------------------------------------------------------------------ 处置建议（预演计入其余活动告警）
+    def _others(self, skip: Optional[str] = None) -> List[Dict]:
+        """其余活动告警，供预演还原当前网络状态；路由漂移带上 LSDB 中的当前开销。"""
+        lsdb = self.window[-1].lsdb if self.window else {}
+        out = []
+        for a in self.alarms:
+            if a["alarm_id"] == skip:
+                continue
+            o = {k: a[k] for k in ("fault_type", "link_id", "node", "links") if k in a}
+            if a["fault_type"] == "route_drift" and a["link_id"] in lsdb:
+                o["cost"] = lsdb[a["link_id"]].cost
+            out.append(o)
+        return out
+
+    def _advice(self, ftype: str, lid: str, node: Optional[str] = None, skip: Optional[str] = None) -> Dict:
+        """处置建议与预演（持锁调用）；出错只计数，告警照常发出（不带建议）。"""
+        try:
+            others = self._others(skip)
+            if ftype == "node_down":
+                return advise_node(self.topo, node, others)
+            lsdb = self.window[-1].lsdb if self.window else {}
+            return advise(self.topo, ftype, lid, lsdb[lid].cost if lid in lsdb else None, others)
+        except Exception:
+            self.errors += 1
+            traceback.print_exc()
+            return dict(summary="处置建议生成失败", steps=[], rehearsal=None)
+
+    def _refresh_advice(self, skip: Optional[str] = None):
+        """告警增减后按新的活动告警集合重新预演其余告警的处置建议（持锁调用）。只更新界面/接口中的活动告警，
+        已写入日志、已外发的记录不变。"""
+        for a in self.alarms:
+            if a["alarm_id"] == skip:
+                continue
+            adv = self._advice(a["fault_type"], a["link_id"], node=a.get("node"), skip=a["alarm_id"])
+            if adv.get("steps"):
+                a["advice"], a["repair"] = adv, " | ".join(s["step"] for s in adv["steps"])
+
+    def _deliver(self, rec: Dict):
+        """告警记录落盘（alarm_log.csv）并经各通道外发；任一通道出错只计数并记录到标准错误，不影响其余通道。"""
+        for name, fn in [("alarm_log.csv", self.astore.write)] + [(type(s).__name__, s.send) for s in self.sinks]:
+            try:
+                fn(rec)
+            except Exception as e:                # noqa: BLE001
+                self.errors += 1
+                print(f"告警 {rec.get('alarm_id')} {rec.get('event')} 写入/外发失败（{name}）：{e!r}",
+                      file=sys.stderr, flush=True)
+
     def _emit(self, alarm: Dict, adv: Dict, res: Dict):
-        """落盘、外发并登记为活动告警（持锁调用）。单告警模式由调用方先清除原告警。"""
-        self.astore.write(alarm)
-        for s in self.sinks:
-            s.send(alarm)
-        alarm = dict(alarm, advice=adv, ts=time.time(), first_round=self.round, last_round=self.round,
-                     ground_truth=[f.label for f in self.backend.faults()] if self.backend.name in ("sim", "netns") else None)
+        """登记为活动告警，再落盘、外发（持锁调用）。单告警模式由调用方先清除原告警。"""
+        alarm = json_safe(alarm)                  # 精测未测得的值（NaN）等在对外记录中为 null
+        reg = dict(alarm, advice=json_safe(adv), ts=time.time(), first_round=self.round, last_round=self.round,
+                   ground_truth=[f.label for f in self.backend.faults()] if self.backend.name in ("sim", "netns") else None)
         if self.multi:
-            alarm.update(secondary=bool(res.get("secondary")), evident=bool(res.get("evident", True)))
+            reg.update(secondary=bool(res.get("secondary")), evident=bool(res.get("evident", True)))
             self.ref, self.rebase_due, self.sec_pending = None, self.round + self.rebase_wait, None
-        self.alarms.append(alarm)
-        self.history.appendleft(alarm)
+        self.alarms.append(reg)
+        self.history.appendleft(reg)
+        self._deliver(alarm)
+        self._refresh_advice(skip=reg["alarm_id"])
 
     def _clear(self, why: str, replaced: bool = False, alarm: Optional[Dict] = None):
         """alarm 为空时清除全部活动告警，否则只清除该条（其余告警的残差基线待窗口刷新后重建）。"""
         with self.lock:
+            gone = []
             for a in ([alarm] if alarm is not None else list(self.alarms)):
                 if a not in self.alarms:
                     continue
-                rec = {k: a[k] for k in ("alarm_id", "severity", "category", "fault_type", "fault_type_cn", "link_id",
-                                         "endpoints", "site", "confidence", "model")}
-                rec.update(event="clear", repair=why, round_id=self.round)
-                self.astore.write(rec)
-                for s in self.sinks:
-                    s.send(rec)
                 a["cleared_ts"] = time.time()
                 a["cleared_why"] = why
                 a["cleared_round"] = self.round
@@ -803,6 +847,14 @@ class Engine:
                 self._trk.pop(a["alarm_id"], None)
                 self.events.appendleft(dict(ts=time.time(), round=self.round, kind="clear",
                                             msg=f"告警 {a['alarm_id']} 恢复：{why}"))
+                rec = {k: a[k] for k in ("alarm_id", "severity", "category", "fault_type", "fault_type_cn", "link_id",
+                                         "endpoints", "site", "confidence", "model")}
+                rec.update(event="clear", repair=why, round_id=self.round)
+                gone.append(rec)
+            for rec in gone:
+                self._deliver(rec)
+            if gone:
+                self._refresh_advice()
             if self.multi:
                 self.sec_pending = None
                 self.ref = None

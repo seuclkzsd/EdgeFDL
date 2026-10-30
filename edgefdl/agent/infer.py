@@ -2,10 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """在线轻量化推理：一次研判 = 1~4 次前向（每次 <1ms），按需调用精测。
 
-另提供纯 numpy 推理器（导出 .npz 权重），边缘网管服务器上可不装 PyTorch 运行。
+时延统计（latency_stats，即 /api/status 的 infer 与 /metrics 的 edgefdl_infer_ms）按单次前向计，一次研判贡献
+1~4 个样本；研判结果中 infer_ms 是其中最慢的一次前向，infer_ms_total 是各次之和（不含特征计算 feature_ms）。
+
+另提供与 QNet 等价的纯 numpy 前向（--engine numpy）：只替换前向计算，模型包仍由 PyTorch 读取（torch.load），
+运行环境仍需安装 PyTorch。
+
+非有限值：精测未测得的量（无应答时的 RTT、iperf3 失败时的带宽，记为 NaN）在研判结果的 probes 中为 None；
+带宽 NaN 在编码精测特征前按"未测得"处理（无应答记 0，与仿真后端一致；有应答则视同基线，不作带宽证据）；
+个别前向输出非有限 Q 值时，这些动作视同屏蔽，全部无效则研判为正常（置信度 0），不据此告警。
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 import time
 from typing import Callable, Dict, List, Optional, Sequence
@@ -23,8 +32,17 @@ def unlog(x: float) -> float:
     return math.copysign(math.expm1(abs(x)), x)
 
 
+def _num(x):
+    """对外记录的数值：NaN/±Inf（未测得）记为 None。"""
+    x = float(x)
+    return x if math.isfinite(x) else None
+
+
+Q_MASKED = -1e4                                 # 屏蔽动作的 Q 值（与 NumpyQNet / action_mask 一致）
+
+
 class NumpyQNet:
-    """与 QNet 等价的 numpy 前向（ReLU MLP），用于无 PyTorch 的边缘环境。"""
+    """与 QNet 等价的 numpy 前向（ReLU MLP）：权重取自已加载的 QNet，前向计算不经 PyTorch。"""
 
     def __init__(self, weights: Dict[str, np.ndarray]):
         self.w = weights
@@ -93,6 +111,13 @@ class Policy:
                                torch.as_tensor(stepf), mask)
         return q[0].numpy()
 
+    def _finite_bw(self, dp: DeepProbe, li: int) -> DeepProbe:
+        """精测带宽未测得（NaN，真实协议栈 iperf3 失败）：无应答记 0（仿真后端链路不通时即为 0），
+        有应答记为基线带宽（不作带宽证据）。其余情况原样返回。"""
+        if math.isfinite(dp.bw_mbps):
+            return dp
+        return dataclasses.replace(dp, bw_mbps=0.0 if dp.recv == 0 else float(self.enc.base.deep_bw[li]))
+
     def decode(self, a: int):
         if a == self.L * K:
             return "normal", None
@@ -115,6 +140,10 @@ class Policy:
         for step in range(self.agent.cfg.max_steps):
             t0 = time.perf_counter()
             q = self._q(light, deep, probed, glob, step)
+            if not np.isfinite(q).all():          # 输入含非有限值时的防护：非有限 Q 视同屏蔽，全部无效取"正常"
+                q = np.where(np.isfinite(q), q, Q_MASKED)
+                if not (q > Q_MASKED).any():
+                    q[self.L * K] = Q_MASKED + 1
             if ex:
                 q[ex] = -1e4
             infer.append((time.perf_counter() - t0) * 1000)
@@ -123,9 +152,10 @@ class Policy:
             if kind == "probe" and probe_fn is not None:
                 dp = probe_fn(lid)
                 li = self.enc.lidx[lid]
-                deep[li] = self.enc.deep(dp, ref)
+                deep[li] = self.enc.deep(self._finite_bw(dp, li), ref)
                 probed[li] = True
-                probes.append(dict(link=lid, loss=dp.loss, rtt=dp.rtt_avg, mdev=dp.rtt_mdev, bw=dp.bw_mbps))
+                probes.append(dict(link=lid, loss=_num(dp.loss), rtt=_num(dp.rtt_avg), mdev=_num(dp.rtt_mdev),
+                                   bw=_num(dp.bw_mbps)))
                 continue
             if kind == "probe":             # 无精测能力时退化为在判定动作中取最优
                 q2 = q.copy()

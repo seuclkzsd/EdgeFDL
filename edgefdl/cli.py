@@ -35,13 +35,16 @@ def _plan(args) -> MeasurePlan:
     return p
 
 
-def _backend(kind, topo, plan, args):
+def _backend(kind, topo, plan, args, auto_dry=False):
+    """auto_dry：LXD 后端在本机没有 lxc 时自动改为 dry run（仅 vnet 子命令；serve/baseline 等须真实执行）。"""
     from .vnet.base import make_backend
     kw = {}
     if kind == "sim":
         kw = dict(seed=getattr(args, "seed", 0), noise_prob=getattr(args, "noise", 0.0) or 0.0)
+    elif getattr(args, "dry_run", False):
+        kw = dict(dry_run=True)
     elif kind == "lxd":
-        kw = dict(dry_run=getattr(args, "dry_run", False))
+        kw = dict(dry_run=None if auto_dry else False)
     return make_backend(kind, topo, plan, **kw)
 
 
@@ -62,13 +65,16 @@ def build_engine(model_path, backend_kind, log_dir, args, plan_override=None):
     from .agent.infer import Policy
     from .core.alarms import make_sinks
     from .core.orchestrator import Engine
+    try:                                    # 先校验告警通道，配置有误时在建虚拟网络之前退出
+        sinks = make_sinks(json.loads(args.sinks) if getattr(args, "sinks", None) else [])
+    except ValueError as e:                 # json.JSONDecodeError 也是 ValueError
+        raise SystemExit(f"edgefdl: --sinks 配置有误：{e}")
     ag, topo, base, plan, meta = load_bundle(model_path)
     if plan_override:
         plan = plan_override(plan)
     backend = _backend(backend_kind, topo, plan, args)
     backend.up()
     policy = Policy(ag, FeatureEncoder(topo, base), engine=getattr(args, "engine", "torch"))
-    sinks = make_sinks(json.loads(args.sinks) if getattr(args, "sinks", None) else [])
     kw = {}
     if getattr(args, "single_alarm", False):
         kw["multi"] = False
@@ -82,7 +88,7 @@ def cmd_topo(args):
     t = topomod.load(args.topo)
     print(topomod.describe(t))
     unc = t.uncovered_links(t._base_targets())
-    print(f"监测目标 {len(t.targets())} 个；盲区链路（已自动补 NQA 探测）: {', '.join(unc) or '无'}")
+    print(f"监测目标 {len(t.targets())} 个；盲区链路（已规划 NQA 探测目标）: {', '.join(unc) or '无'}")
     if args.out:
         t.save(args.out)
         print(f"已写出完整规划（含自动分配的接口/IP）: {args.out}")
@@ -110,19 +116,22 @@ def cmd_baseline(args):
 
 
 def cmd_gen(args):
+    """同一 --seed 得到同一数据集：仿真后端无论 --workers 几个、是否 --raw-csv，都按同样的分块与种子生成。"""
     from .agent.features import Baseline
-    from .faults.generator import SampleGenerator, generate_parallel
+    from .faults.generator import generate_on, generate_parallel
     t = topomod.load(args.topo)
     base = Baseline.load(args.baseline)
     t0 = time.time()
-    if args.backend == "sim" and args.workers > 1 and not args.raw_csv:
-        d = generate_parallel(t, base, args.n, args.out, seed=args.seed, workers=args.workers,
-                              rand=not getattr(args, "plain", False))
+    rand = not getattr(args, "plain", False)
+    if args.backend == "sim":
+        d = generate_parallel(t, base, args.n, args.out, seed=args.seed, workers=args.workers, rand=rand,
+                              raw_csv=args.raw_csv)
     else:
         b = _backend(args.backend, t, _plan(args), args)
         b.up()
-        d = SampleGenerator(t, b, base, seed=args.seed, rand=not getattr(args, "plain", False)).generate(
-            args.n, args.out, raw_csv=args.raw_csv)
+        if hasattr(b, "wait_converged"):
+            print(f"OSPF 收敛用时 {b.wait_converged():.1f} s", flush=True)
+        d = generate_on(b, t, base, args.n, args.out, seed=args.seed, rand=rand, raw_csv=args.raw_csv)
     print(f"生成 {len(d['y_type'])} 个样本 -> {args.out}  ({time.time() - t0:.1f}s)，"
           f"触发率 {d['detected'].mean():.3f}")
 
@@ -204,12 +213,18 @@ def cmd_serve(args):
 
 def cmd_vnet(args):
     t = topomod.load(args.topo)
-    b = _backend(args.backend, t, _plan(args), args)
+    b = _backend(args.backend, t, _plan(args), args, auto_dry=True)
     if args.action == "up":
         b.up()
     elif args.action == "down":
         b.down()
-    print(json.dumps(b.status(), ensure_ascii=False, indent=1, default=str))
+    if b.ex.dry_run and args.action != "status":
+        why = "--dry-run" if args.dry_run else "本机没有 lxc 命令"
+        print(f"# {b.name} {args.action}（dry run，{why}）：以下命令只打印、未执行", flush=True)
+        for c in b.ex.log:
+            print(c)
+    else:
+        print(json.dumps(b.status(), ensure_ascii=False, indent=1, default=str))
 
 
 def cmd_pipeline(args):
@@ -336,7 +351,8 @@ def main(argv=None):
     p.add_argument("action", choices=["up", "down", "status"])
     p.add_argument("--topo", default=DEFAULT_TOPO)
     p.add_argument("--backend", default="netns", choices=["netns", "lxd"])
-    p.add_argument("--dry-run", action="store_true", help="LXD：只打印命令序列")
+    p.add_argument("--dry-run", action="store_true",
+                   help="只打印 up/down 的命令序列，不执行、不改动本机（netns 与 lxd 均可）")
     p.set_defaults(fn=cmd_vnet)
 
     p = sp.add_parser("pipeline", help="一键 基线→样本→训练→评估→自测")
