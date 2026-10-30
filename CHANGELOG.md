@@ -6,6 +6,120 @@ All user-visible changes to EdgeFDL are recorded in this file. The format follow
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-30
+
+Patch release with fixes to the online engine, the REST API, the real-stack tooling and the documentation, and a
+hardened API. The released model `results/model.pt` and the result files in `results/` are unchanged: with 0.1.1 the
+test-set evaluations and the baseline reproduce byte for byte, the 72-hour-equivalent self-test gives the same
+detector triggers, filtered anomalies, false alarms (0) and the same outcome in all 84 online scenarios, and the
+robustness suite reproduces `results/robust.json` apart from its run time.
+
+### Fixed
+
+- **Alarm delivery.** An alarm is registered (dashboard, API, `/metrics`) before it is written to `alarm_log.csv`
+  and sent to the sinks. A failing CSV write or sink no longer stops an alarm from being raised or cleared: it adds 1
+  to `errors` in `/api/status`, prints `告警 <id> raise|clear 写入/外发失败（<sink>）：<error>` to standard error,
+  and the other sinks still receive the record. Failed background Webhook deliveries are printed
+  (`Webhook 投递失败（<url>）：<error>`).
+- **Remediation rehearsal** runs on the current state of the network: links of the other active alarms count as down
+  (all links of a device that is down), a drifted link keeps its LSDB cost, and a detour over another alarmed,
+  degraded link is reported (for a degradation it makes the detour infeasible). The advice of all active alarms is
+  rehearsed again when the set of alarms changes, and the detail then ends with `（已计入其他活动告警：…）`.
+  - Link down: hosts cut off by the link count as lost, so the host access links L11–L14 are infeasible; the link's
+    own NQA probe no longer counts, so the backup link L3 is feasible.
+  - Degradation of a link that no monitored path crosses (L3, L8, L9, L10 on the demo topology) is rehearsed on the
+    traffic between its two end devices and reports the backup path.
+  - Route drift compares the paths under the current LSDB cost with the paths after restoring the baseline; it is
+    infeasible when the LSDB already shows the baseline cost or no cost is known.
+- **Values that were not measured** (for example the RTT of a deep probe without replies) appear as `null` in the
+  alarm evidence. API responses, Webhook bodies and the `evidence` column of `alarm_log.csv` never contain `NaN` or
+  `Infinity`. A forward pass with non-finite Q-values treats those actions as masked.
+- **`POST /api/inject`** checks the request and returns 400 with a message for missing fields, unknown types and links
+  (`未知链路 L99`), non-numeric, non-finite and out-of-range values (delay and jitter 0–10,000 ms, loss and
+  bandwidth 0–1, route drift up to an OSPF cost of 65,535). `POST /api/clear` refuses unknown links (400) instead of
+  succeeding silently. `GET /api/alarms?n=` with a value that is not a non-negative integer returns 400 instead of
+  500. `alarms_total` and `edgefdl_alarms_total` count only alarms actually raised; if the advice cannot be built,
+  the alarm is still raised (`处置建议生成失败`) and `errors` grows by 1.
+- **Alarm IDs** are unique across runs and across engines started in the same second (new format, see Changed).
+- **`intake -o` and `topo -o`** create the output directory, so the first command of the deployment page works in a
+  fresh clone.
+- **Sample generation** gives the same data set for a seed with any `--workers` value, including `--workers 1` and
+  `gen --raw-csv`; the real-stack backends use the same chunked seeding.
+- **Training** draws weight initialisation, exploration and replay sampling from generators seeded with the
+  configured seed: the same training set, seed and thread count give the same model.
+- **`vnet --dry-run`** prints the command sequence of `up` or `down` for both `netns` and `lxd` and runs nothing (it
+  printed only a status for `lxd` and was ignored for `netns`). `vnet --backend lxd` runs as a dry run on a machine
+  without `lxc`; the other commands of the `lxd` backend stop with a clear message there.
+- **LXD backend:** the FRR files are generated in a temporary directory that is removed afterwards; device names can
+  no longer place files outside it; `python -m edgefdl.vnet.lxd --uplink` refuses devices that are not in the
+  topology.
+- **Topology loading** refuses invalid or duplicate device names, link IDs, interface names and addresses, links from
+  a device to itself and out-of-range link values, instead of silently building a different topology; automatic
+  planning skips loopbacks, interface names and link IDs that the file already uses. The real-stack backends check
+  Linux interface names before creating anything.
+- **Intake:** PDF files are no longer sent to the multimodal endpoint, which accepts images only; they are skipped
+  with a warning (convert their pages to PNG first). A drawing whose extraction fails is skipped with a warning
+  instead of aborting the intake.
+- **`scripts/lab.sh run`** hands files created in the repository back to the calling user and warns about output
+  paths under the container's `/tmp`, which is removed with the container.
+- **Log rotation** no longer overwrites an archive rotated in the same microsecond.
+- **Dashboard:** the inference tile reads 单次前向推理 p99 (one forward pass), an unreachable target shows
+  `RTT 不可达` without a unit, alternative conclusions use the Chinese fault-type labels, and the clear button shows
+  the server's error.
+- **Release workflow:** a run started by hand is always a dry run, also on a tag.
+- **Tests:** the multi-alarm engine tests run on CI with `results/model.pt` instead of being skipped, and the CI
+  `tests` step fails if a test is skipped because the model is missing.
+- **Documentation:** route drift applies to router–router links only; the L6 example shows H3C Comware commands;
+  the real-stack baseline is written inside the repository; the robustness suite takes about 3.5 minutes with 40
+  workers; the ICMP rate-limiting limitation names the observed errors; packet trains and deep probes run between
+  link ends; the integration example binds to a management address with `--no-inject`; the results-regeneration
+  recipe keeps the 72-hour self-test; `online.long` keys in `results/README.md`; `/api/status` `infer`,
+  `edgefdl_infer_ms` and the alarm's `infer_ms` are per forward pass; the `evident` clearing rule; the NumPy engine
+  still needs PyTorch to load the bundle; the PyTorch build of the measurements (2.9.1, CUDA 12.8 build run on the
+  CPU); the LXD licence in NOTICE.
+
+### Security
+
+- **Cross-site requests and DNS rebinding.** `POST` requests need `Content-Type: application/json` (415 otherwise);
+  a `POST` whose `Origin` differs from its `Host` is refused (403); while `serve` listens on a loopback address it
+  answers only requests addressed to `localhost`, `127.0.0.1`, `::1` or the bound address (403 otherwise). Request
+  bodies are limited to 65,536 bytes (413). The dashboard sends JSON requests.
+- **Model bundles** are loaded with `torch.load(..., weights_only=True)`, so loading a bundle runs no code from it.
+- **CSV logs:** text cells that a spreadsheet would read as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage
+  return) are written with a leading `'`.
+- **Topology identifiers** are restricted to safe characters, and the FRR configuration generator refuses fields with
+  line breaks or control characters, so topology fields cannot add configuration lines or reach other paths.
+- **Vulnerability reports:** [SECURITY.md](SECURITY.md) gives a reporting path that works while GitHub's private
+  vulnerability reporting is not yet available.
+
+### Changed
+
+- PyTorch 2.0 or newer is required (`requirements.txt`, `pyproject.toml`), for `weights_only=True` loading.
+- Alarm IDs have the form `A<Unix start time>-<6 random hex digits>-<4-digit sequence>`, for example
+  `A1793328137-fdd818-0001` (previously `A<7 digits>-<4 digits>`).
+- `serve --sinks` is checked at start: a Webhook needs a complete `http://` or `https://` URL, a Syslog sink a `host`
+  and a port from 1 to 65535; unknown types are an error instead of being ignored; a single JSON object is accepted
+  as well as a list. An invalid configuration stops `serve` before the network backend comes up, with exit code 1 and
+  `edgefdl: --sinks 配置有误：<reason>`.
+- GOVERNANCE.md: a release may keep the `results/` files of an earlier release when it reproduces them, as 0.1.1
+  does.
+- `edgefdl topo` names blind links as `盲区链路（已规划 NQA 探测目标）`: the NQA probe is planned by EdgeFDL and
+  configured by the operator on the device.
+- `curl` and other clients have to send `-H 'Content-Type: application/json'` with `POST /api/inject` and
+  `/api/clear`.
+
+### Added
+
+- [results/sim_vs_stack.json](results/sim_vs_stack.json) and [scripts/sim_vs_stack.py](scripts/sim_vs_stack.py):
+  per-target baseline RTT of the demo network on the real protocol stack and on the simulator; all 37 targets agree
+  within 0.74 ms (median 0.39 ms).
+- `python -m edgefdl.vnet.lxd --stage-dir DIR` keeps the generated FRR files for review.
+- [tests/test_engine.py](tests/test_engine.py) (sinks, JSON encoding, API validation and cross-site checks,
+  rehearsal) and [tests/test_infra.py](tests/test_infra.py) (topology validation, dry runs, CSV logs,
+  reproducibility, bundle loading, intake); the suite has 71 tests.
+- The demo video `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 40 s) is attached to the
+  [v0.1.1 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1).
+
 ## [0.1.0] - 2026-10-30
 
 First release of EdgeFDL: autonomous link-level fault detection and localization for edge networks, running on the
@@ -69,5 +183,6 @@ network-management server (EMS).
 - **Demo video** `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 19 s) attached to the
   [v0.1.0 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0).
 
-[Unreleased]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0

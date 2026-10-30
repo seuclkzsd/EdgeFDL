@@ -22,7 +22,7 @@ url: "https://github.com/seuclkzsd/EdgeFDL"
 license: Apache-2.0
 # version and date-released follow edgefdl/__init__.py and the CHANGELOG section of the release
 # (GOVERNANCE.md, "Releases"); both are set when the release is tagged.
-version: "0.1.0"
+version: "0.1.1"
 date-released: "2026-10-30"
 keywords:
   - network fault localization
