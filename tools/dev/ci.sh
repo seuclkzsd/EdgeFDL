@@ -8,7 +8,8 @@
 #
 #   tools/dev/ci.sh [STEP...]          default: quick
 #     licenses   tools/dev/spdx.py: every source file carries its SPDX license header
-#     tests      the unit tests: python -m unittest discover -s tests -v
+#     tests      the unit tests: python -m unittest discover -s tests -v; a test skipped because
+#                results/model.pt is missing fails the step
 #     serve      the online system end to end on the simulation backend: `edgefdl serve` with
 #                results/model.pt on a free local port (0.2 s rounds), a link-down fault injected on
 #                L4 through POST /api/inject, the link-down alarm on L4 awaited (<= 60 s), the fault
@@ -74,6 +75,19 @@ step() {
   "$@"
   [ -z "${GITHUB_ACTIONS:-}" ] || echo "::endgroup::"
   echo "ci: $name passed in $((SECONDS - t0)) s"
+}
+
+# ---------------------------------------------------------------------------------------- tests
+# tests_check: the unit tests; a test skipped for want of results/model.pt fails the step, so the
+# engine tests that need the published model cannot silently stop running
+tests_check() {
+  local log="$tmp/unittest.log"
+  "$py" -m unittest discover -s tests -v 2>&1 | tee "$log"
+  [ "${PIPESTATUS[0]}" = 0 ] || return 1
+  if grep -q "skipped '无模型'" "$log"; then
+    echo "tests: tests skipped because results/model.pt was not found" >&2
+    return 1
+  fi
 }
 
 # ---------------------------------------------------------------------------------------- serve
@@ -371,7 +385,7 @@ release_assets() {
 for s in "${steps[@]}"; do
   case "$s" in
     licenses) step licenses "$py" tools/dev/spdx.py ;;
-    tests) step tests "$py" -m unittest discover -s tests -v ;;
+    tests) step tests tests_check ;;
     serve) step serve serve_check "$tmp/serve" "$root" "$py" -m edgefdl ;;
     pipeline) step pipeline pipeline_check ;;
     dist) step dist dist_check ;;
