@@ -1,0 +1,102 @@
+{
+ "per_type": {
+  "link_down": {
+   "n": 1380,
+   "type_acc": 1.0,
+   "avg_probes": 0.0014492753623188406,
+   "detect_rate": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 1.0,
+   "detect_delay_s": 19.666666666666664
+  },
+  "delay": {
+   "n": 1477,
+   "type_acc": 1.0,
+   "avg_probes": 0.02843601895734597,
+   "detect_rate": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 1.0,
+   "detect_delay_s": 22.948544346648614
+  },
+  "loss": {
+   "n": 1400,
+   "type_acc": 0.9614285714285714,
+   "avg_probes": 0.32071428571428573,
+   "detect_rate": 0.9978571428571429,
+   "loc_acc": 0.9585714285714285,
+   "joint_acc": 0.9585714285714285,
+   "detect_delay_s": 26.775232641374377
+  },
+  "jitter": {
+   "n": 1390,
+   "type_acc": 0.9985611510791367,
+   "avg_probes": 0.0028776978417266188,
+   "detect_rate": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 0.9985611510791367,
+   "detect_delay_s": 23.10791366906475
+  },
+  "bandwidth": {
+   "n": 1401,
+   "type_acc": 0.9914346895074947,
+   "avg_probes": 0.004282655246252677,
+   "detect_rate": 1.0,
+   "loc_acc": 0.9914346895074947,
+   "joint_acc": 0.9914346895074947,
+   "detect_delay_s": 47.969307637401855
+  },
+  "route_drift": {
+   "n": 1430,
+   "type_acc": 1.0,
+   "avg_probes": 0.0,
+   "detect_rate": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 1.0,
+   "detect_delay_s": 19.702797202797203
+  },
+  "normal": {
+   "n": 1522,
+   "type_acc": 0.9993429697766097,
+   "avg_probes": 0.07095926412614981,
+   "detect_rate": 0.2759526938239159
+  }
+ },
+ "per_category": {
+  "链路中断": {
+   "n": 1380,
+   "category_acc": 1.0,
+   "type_acc": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 1.0
+  },
+  "性能劣化": {
+   "n": 5668,
+   "category_acc": 0.9887085391672548,
+   "type_acc": 0.9880028228652082,
+   "loc_acc": 0.9876499647141849,
+   "joint_acc": 0.9872971065631616
+  },
+  "路由漂移": {
+   "n": 1430,
+   "category_acc": 1.0,
+   "type_acc": 1.0,
+   "loc_acc": 1.0,
+   "joint_acc": 1.0
+  },
+  "正常": {
+   "n": 1522,
+   "category_acc": 0.9993429697766097,
+   "type_acc": 0.9993429697766097
+  }
+ },
+ "overall": {
+  "n": 10000,
+  "type_acc": 0.9931,
+  "joint_acc": 0.9927,
+  "false_alarm_rate": 0.000657030223390276,
+  "false_trigger_rate": 0.2759526938239159,
+  "false_alarm_rate_noisy": 0.0007575757575757576,
+  "miss_rate": 0.00754895022410946,
+  "avg_probes": 0.0611
+ }
+}

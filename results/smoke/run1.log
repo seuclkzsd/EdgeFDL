@@ -1,0 +1,58 @@
+== 拓扑 demo-edge: 12 设备 / 15 链路 / 37 监测目标；路由=FRR-OSPF
+== 虚拟网络创建 2.4s，收敛 10.9s
+== 基线：可达 37/37，lo.acc1 RTT=3.27ms mdev=0.02 路径=core>agg1>acc1；本轮测量字节 290494（465 kbps @ 5s 周期）
+   轻量带宽估计 {'L1': 999, 'L2': 1000, 'L3': 1000}；LSDB[L4]=LsdbEntry(adj_up=True, cost=10.0)
+   [PASS] 基线全部可达 
+   [PASS] 逐跳路径完整（ICMP 限速丢跳已重测） 路径未知 []
+   [PASS] 基线路径经过被测链路 ('core', 'agg1', 'acc1')
+   精测 L4: RTT=1.01 mdev=0.00 loss=0.00 bw=999.70Mbps（标称 1000）；单次包列估计 1000.45Mbps
+   [PASS] 精测带宽接近标称 
+   [PASS] 转发表路径与 traceroute 一致 fib=('core', 'agg1', 'acc1')
+== 注入 L4 链路中断（注入前稳态等待 0.6s）
+   不可达=['L4.acc1', 'L4.agg1']；lo.acc1 RTT=9.28(基线 3.27) mdev=0.01 loss=0.00 路径=core>agg1>acc2>acc1 转发表路径=core>agg1>acc2>acc1
+   LSDB[L4]=LsdbEntry(adj_up=False, cost=10.0)；邻接 Full 持续 -s（注入后 8.9s）；精测 RTT=nan mdev=nan loss=1.00 bw=nan
+   [PASS] 两端接口不可达 ['L4.acc1', 'L4.agg1']
+   [PASS] 目标经冗余路径仍可达且绕开该链路 fib=('core', 'agg1', 'acc2', 'acc1')
+   [PASS] LSDB 邻接断开 
+   清除后稳态等待 1.6s
+== 注入 L4 时延劣化(RTT异常) 20ms（注入前稳态等待 0.6s）
+   不可达=[]；lo.acc1 RTT=43.29(基线 3.27) mdev=0.04 loss=0.00 路径=core>agg1>acc1 转发表路径=core>agg1>acc1
+   LSDB[L4]=LsdbEntry(adj_up=True, cost=10.0)；邻接 Full 持续 6.22s（注入后 5.0s）；精测 RTT=41.03 mdev=0.01 loss=0.00 bw=999.70
+   [PASS] 邻接全程保持 Full Full 持续 6.222s / 注入后 5.0s
+   [PASS] 被测路径不变 fib=('core', 'agg1', 'acc1') trace=('core', 'agg1', 'acc1')
+   [PASS] RTT 上升约 2v Δ=40.0ms 期望≈40
+   清除后稳态等待 0.6s
+== 注入 L4 丢包劣化 10%（注入前稳态等待 0.6s）
+   不可达=[]；lo.acc1 RTT=3.26(基线 3.27) mdev=0.01 loss=0.40 路径=core>agg1>acc1 转发表路径=core>agg1>acc1
+   LSDB[L4]=LsdbEntry(adj_up=True, cost=10.0)；邻接 Full 持续 19.17s（注入后 11.7s）；精测 RTT=1.01 mdev=0.01 loss=0.23 bw=1000.00
+   [PASS] 邻接全程保持 Full Full 持续 19.172s / 注入后 11.7s
+   [PASS] 被测路径不变 fib=('core', 'agg1', 'acc1') trace=('core', 'agg1', 'acc1')
+   [PASS] 精测丢包≈1-(1-p)^2 0.23 期望≈0.19
+   清除后稳态等待 0.6s
+== 注入 L4 抖动劣化 10ms（注入前稳态等待 0.6s）
+   不可达=[]；lo.acc1 RTT=26.95(基线 3.27) mdev=9.96 loss=0.00 路径=core>agg1>acc1 转发表路径=core>agg1>acc1
+   LSDB[L4]=LsdbEntry(adj_up=True, cost=10.0)；邻接 Full 持续 24.98s（注入后 4.6s）；精测 RTT=21.14 mdev=11.02 loss=0.00 bw=1000.00
+   [PASS] 邻接全程保持 Full Full 持续 24.975s / 注入后 4.6s
+   [PASS] 被测路径不变 fib=('core', 'agg1', 'acc1') trace=('core', 'agg1', 'acc1')
+   [PASS] 精测抖动显著上升 mdev=11.0ms
+   [PASS] 抖动不被误测成带宽下降 bw=1000 来源=iperf3
+   轻量探测 RTT 增量 23.7ms（2J=20），mdev 10.0ms
+   清除后稳态等待 0.6s
+== 注入 L4 带宽劣化 剩余20%（注入前稳态等待 0.6s）
+   不可达=[]；lo.acc1 RTT=3.25(基线 3.27) mdev=0.01 loss=0.00 路径=core>agg1>acc1 转发表路径=core>agg1>acc1
+   LSDB[L4]=LsdbEntry(adj_up=True, cost=10.0)；邻接 Full 持续 30.25s（注入后 4.0s）；精测 RTT=1.01 mdev=0.01 loss=0.00 bw=200.00
+   [PASS] 邻接全程保持 Full Full 持续 30.246s / 注入后 4.0s
+   [PASS] 被测路径不变 fib=('core', 'agg1', 'acc1') trace=('core', 'agg1', 'acc1')
+   [PASS] 精测带宽≈r×bw 200 期望≈200
+   清除后稳态等待 0.6s
+== 注入 L4 路由漂移 10x（注入前稳态等待 0.6s）
+   不可达=[]；lo.acc1 RTT=9.28(基线 3.27) mdev=0.01 loss=0.00 路径=core>agg1>acc2>acc1 转发表路径=core>agg1>acc2>acc1
+   LSDB[L4]=LsdbEntry(adj_up=True, cost=100.0)；邻接 Full 持续 35.56s（注入后 4.0s）；精测 RTT=1.01 mdev=0.02 loss=0.00 bw=999.70
+   [PASS] 全部可达 
+   [PASS] 路径改变且绕开该链路 fib=('core', 'agg1', 'acc2', 'acc1')
+   [PASS] LSDB 开销变化 LsdbEntry(adj_up=True, cost=100.0)
+   清除后稳态等待 0.6s
+   [PASS] 恢复后回到基线 RTT=3.26 路径=core>agg1>acc1
+   [PASS] down 后无残留命名空间 
+== 冒烟结果 26/26 通过
+exit=0
