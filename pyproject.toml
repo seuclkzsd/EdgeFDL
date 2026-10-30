@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edgefdl"
+dynamic = ["version"]
+description = "Autonomous link-level fault localization for edge networks: equivalent virtual network, trigger-aligned fault samples, and a DDQN agent that decides when to probe"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [{name = "seuclkzsd and the EdgeFDL contributors"}]
+requires-python = ">=3.8"
+dependencies = [
+  "numpy>=1.19",
+  "pyyaml>=5.3",
+  "torch>=1.10",
+]
+keywords = ["network fault localization", "network tomography", "reinforcement learning", "DDQN", "edge network", "OSPF", "network management"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+  "Topic :: System :: Networking :: Monitoring",
+  "Intended Audience :: Telecommunications Industry",
+]
+
+[project.optional-dependencies]
+monitor = ["psutil>=5.7"]
+
+[project.scripts]
+edgefdl = "edgefdl.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/seuclkzsd/EdgeFDL"
+Issues = "https://github.com/seuclkzsd/EdgeFDL/issues"
+Changelog = "https://github.com/seuclkzsd/EdgeFDL/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+packages = {find = {include = ["edgefdl*"]}}
+
+[tool.setuptools.dynamic]
+version = {attr = "edgefdl.__version__"}
+
+[tool.setuptools.package-data]
+edgefdl = ["core/web/*.html"]

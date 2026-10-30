@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+
+# Generated runs, datasets and logs (python -m edgefdl pipeline / bench / robust / serve)
+runs/
+*.npz
+measure_log.csv*
+alarm_log.csv*
+
+# The published model bundle and results of the current release are kept in results/
+*.pt
+!results/*.pt
+
+# Stale dashboard captures (the docs use the dash_<stage>.png set retaken with results/model.pt)
+docs/media/*_full.png
+docs/media/dash_recovered.png

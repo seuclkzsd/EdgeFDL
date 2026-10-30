@@ -1,0 +1,43 @@
+# 需求采集表示例：某单位边缘网络（演示用）
+# 主干网接入路由器 core 下挂双汇聚 agg1/agg2，四个接入点 acc1~acc4 组成环形冗余，
+# 每个接入点下有业务主机；边缘网管服务器 ems 直连 core。
+# 未填写的接口名 / 互联 IP / 环回地址由系统按 ip_plan 自动规划。
+name: demo-edge
+description: 主干接入 + 双汇聚 + 环形接入的典型边缘网络（15 条链路）
+vantage: ems
+ip_plan:
+  p2p_pool: 10.10.0.0/16
+  loopback_pool: 10.255.0.0/24
+nodes:
+  - {name: core, role: router, vendor: huawei, model: AR6280, site: 中心机房}
+  - {name: agg1, role: router, vendor: huawei, model: AR6140, site: 东区汇聚}
+  - {name: agg2, role: router, vendor: h3c, model: MSR3620, site: 西区汇聚}
+  - {name: acc1, role: router, vendor: huawei, model: AR651, site: 一号楼}
+  - {name: acc2, role: router, vendor: huawei, model: AR651, site: 二号楼}
+  - {name: acc3, role: router, vendor: h3c, model: MSR2600, site: 三号楼}
+  - {name: acc4, role: router, vendor: h3c, model: MSR2600, site: 四号楼}
+  - {name: ems, role: ems, site: 中心机房}
+  - {name: h1, role: host, site: 一号楼}
+  - {name: h2, role: host, site: 二号楼}
+  - {name: h3, role: host, site: 三号楼}
+  - {name: h4, role: host, site: 四号楼}
+links:
+  # 汇聚上联（主干侧）
+  - {id: L1,  a: core, b: agg1, bw: 1000, delay: 1.0, cost: 10}
+  - {id: L2,  a: core, b: agg2, bw: 1000, delay: 1.2, cost: 10}
+  - {id: L3,  a: agg1, b: agg2, bw: 1000, delay: 0.8, cost: 15}
+  # 接入
+  - {id: L4,  a: agg1, b: acc1, bw: 1000, delay: 0.5, cost: 10}
+  - {id: L5,  a: agg1, b: acc2, bw: 100,  delay: 2.0, cost: 20}
+  - {id: L6,  a: agg2, b: acc3, bw: 1000, delay: 0.6, cost: 10}
+  - {id: L7,  a: agg2, b: acc4, bw: 100,  delay: 2.5, cost: 20}
+  # 接入环（冗余）
+  - {id: L8,  a: acc1, b: acc2, bw: 100,  delay: 1.5, cost: 15}
+  - {id: L9,  a: acc3, b: acc4, bw: 100,  delay: 1.5, cost: 15}
+  - {id: L10, a: acc2, b: acc3, bw: 100,  delay: 3.0, cost: 30}
+  # 业务主机与网管
+  - {id: L11, a: acc1, b: h1, bw: 1000, delay: 0.1, cost: 10}
+  - {id: L12, a: acc2, b: h2, bw: 1000, delay: 0.1, cost: 10}
+  - {id: L13, a: acc3, b: h3, bw: 1000, delay: 0.1, cost: 10}
+  - {id: L14, a: acc4, b: h4, bw: 1000, delay: 0.1, cost: 10}
+  - {id: L15, a: core, b: ems, bw: 1000, delay: 0.1, cost: 10}

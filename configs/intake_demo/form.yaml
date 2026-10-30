@@ -1,0 +1,13 @@
+# 需求采集表示例：只填设备清单与网管位置，链路/IP/开销从设备配置中自动提取
+name: intake-demo
+vantage: ems
+nodes:
+  - {name: core, role: router, site: 中心机房}
+  - {name: agg1, role: router, site: 东区}
+  - {name: agg2, role: router, site: 西区}
+  - {name: ems, role: ems, site: 中心机房}
+links:
+  - {a: core, b: ems, bw: 1000, delay: 0.1}
+link_perf:
+  core-agg1: {delay: 1.0}
+  core-agg2: {delay: 1.2}

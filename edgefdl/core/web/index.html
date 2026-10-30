@@ -1,0 +1,264 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>边缘网络故障自主定位系统</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#2a3240; --text:#e6edf3; --muted:#8b98a9;
+  --ok:#3fb37f; --warn:#e3b341; --bad:#f85149; --accent:#58a6ff; --ems:#a371f7; --host:#6e7d91;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+header{display:flex;align-items:center;gap:24px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);flex-wrap:wrap}
+header h1{font-size:18px;margin:0;font-weight:600;letter-spacing:.5px}
+header .sub{color:var(--muted);font-size:12px}
+.kpis{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+.kpi{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 12px;min-width:96px}
+.kpi b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:11px;color:var(--muted)}
+.kpi.good b{color:var(--ok)} .kpi.bad b{color:var(--bad)}
+main{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);gap:14px;padding:14px 20px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card h2{font-size:13px;margin:0 0 10px;color:var(--muted);font-weight:600;letter-spacing:1px}
+#topo svg{width:100%;height:auto;display:block}
+.link{stroke-width:3;cursor:pointer;transition:stroke .3s}
+.link.sel{stroke-width:6}
+.link.alarm{stroke-width:6;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{stroke-opacity:.35}}
+.lbl{font-size:11px;fill:var(--muted);pointer-events:none}
+.node text{font-size:12px;fill:var(--text);pointer-events:none}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px}
+.alarm-empty{color:var(--ok);font-size:15px;padding:18px 0}
+.badge{display:inline-block;border-radius:4px;padding:1px 8px;font-size:12px;font-weight:600;margin-right:6px}
+.sev-critical{background:var(--bad);color:#fff}.sev-major{background:#db6d28;color:#fff}.sev-minor{background:var(--warn);color:#111}
+.atitle{font-size:17px;font-weight:600;margin:6px 0 2px}
+.meta{color:var(--muted);font-size:12px}
+.conf{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:8px 0}
+.conf div{height:100%;background:var(--accent)}
+ul.ev{margin:6px 0 0 0;padding-left:18px} ul.ev li{margin:2px 0}
+.steps{margin-top:10px}
+.step{border-left:2px solid var(--accent);padding:2px 0 6px 10px;margin:6px 0}
+.cmd{font-family:var(--mono);font-size:12px;background:#0a0e14;border:1px solid var(--line);border-radius:4px;padding:3px 8px;margin-top:4px;white-space:pre-wrap;word-break:break-all}
+.reh{margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--panel2);font-size:13px}
+.truth{margin-top:10px;font-size:12px;color:var(--muted)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--muted);font-weight:500}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+select,input,button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font:inherit}
+button{cursor:pointer} button.primary{background:var(--accent);color:#0d1117;border-color:var(--accent);font-weight:600}
+button.danger{border-color:var(--bad);color:var(--bad)}
+.events{max-height:220px;overflow:auto;font-size:12px}
+.events div{padding:3px 0;border-bottom:1px dashed var(--line)}
+.events .t{color:var(--muted);font-family:var(--mono);margin-right:6px}
+.k-alarm{color:var(--bad)}.k-clear{color:var(--ok)}.k-filtered{color:var(--muted)}.k-pending{color:var(--warn)}
+.spark{width:100%;height:110px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+@media (max-width:1100px){main{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>边缘网络故障自主定位系统</h1>
+    <div class="sub" id="sub">加载中…</div>
+  </div>
+  <div class="kpis">
+    <div class="kpi" id="k-up"><b>-</b><span>运行时长</span></div>
+    <div class="kpi" id="k-round"><b>-</b><span>测量轮次</span></div>
+    <div class="kpi" id="k-inf"><b>-</b><span>单轮推理 p99 (≤100ms)</span></div>
+    <div class="kpi" id="k-bw"><b>-</b><span>测量带宽占用 (&lt;5%)</span></div>
+    <div class="kpi" id="k-cpu"><b>-</b><span>进程 CPU / 内存</span></div>
+    <div class="kpi" id="k-al"><b>-</b><span>告警 / 已过滤</span></div>
+  </div>
+</header>
+<main>
+  <section>
+    <div class="card" id="topo">
+      <h2>网络拓扑与链路健康</h2>
+      <svg id="svg" viewBox="0 0 1000 560" role="img" aria-label="拓扑"></svg>
+      <div class="legend">
+        <span><i style="background:var(--ok)"></i>正常</span>
+        <span><i style="background:var(--warn)"></i>可疑 / 受影响</span>
+        <span><i style="background:var(--bad)"></i>异常/告警</span>
+        <span><i style="background:repeating-linear-gradient(90deg,var(--bad) 0 4px,transparent 4px 7px)"></i>邻接断开</span>
+        <span>点击链路查看测量曲线</span>
+      </div>
+    </div>
+    <div class="row2">
+      <div class="card">
+        <h2 id="sel-title">链路测量（未选择）</h2>
+        <svg class="spark" id="spark" viewBox="0 0 400 110" preserveAspectRatio="none"></svg>
+        <div class="meta" id="sel-meta"></div>
+      </div>
+      <div class="card">
+        <h2>故障注入（演示 / 测试）</h2>
+        <div class="ctl">
+          <select id="inj-link"></select>
+          <select id="inj-type"></select>
+          <input id="inj-val" type="number" step="any" style="width:90px">
+          <span class="meta" id="inj-unit"></span>
+        </div>
+        <div class="ctl" style="margin-top:10px">
+          <button class="primary" id="btn-inj">注入故障</button>
+          <button class="danger" id="btn-clr">清除全部</button>
+          <span class="meta" id="inj-msg"></span>
+        </div>
+        <div class="truth" id="truth"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="card" id="alarm-card">
+      <h2>当前告警与处置建议</h2>
+      <div id="alarm"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>事件流</h2>
+      <div class="events" id="events"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>告警历史</h2>
+      <table><thead><tr><th>编号</th><th>时间</th><th>类型</th><th>链路</th><th>置信度</th><th>状态</th></tr></thead>
+      <tbody id="hist"></tbody></table>
+      <div class="ctl" style="margin-top:8px">
+        <a href="/api/export/alarm_log.csv"><button>导出告警日志 CSV</button></a>
+        <a href="/api/export/measure_log.csv"><button>导出测量日志 CSV</button></a>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+let TOPO = null, SEL = null, LAST = null;
+const UNIT = {link_down:["", 1], delay:["ms（单向附加）", 30], loss:["丢包率 0~1", 0.1], jitter:["ms", 15],
+              bandwidth:["剩余比例 0~1", 0.2], route_drift:["开销倍率", 10]};
+const ROLE_COLOR = {router:"#1f6feb", switch:"#1f6feb", host:"var(--host)", ems:"var(--ems)"};
+
+function el(tag, attrs, parent){const e=document.createElementNS(NS, tag);for(const k in attrs)e.setAttribute(k, attrs[k]);parent&&parent.appendChild(e);return e;}
+function esc(s){return String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h}h${m}m`:`${m}m${s%60}s`;}
+function ts(t){return new Date(t*1000).toLocaleTimeString("zh-CN",{hour12:false});}
+
+async function init(){
+  TOPO = await (await fetch("/api/topology")).json();
+  const svg = $("#svg"), W=1000, H=560, P=TOPO.layout;
+  const xy = n => [40 + P[n][0]*(W-80), 20 + P[n][1]*(H-40)];
+  const gl = el("g", {}, svg), gn = el("g", {}, svg);
+  for(const l of TOPO.links){
+    const [x1,y1]=xy(l.a), [x2,y2]=xy(l.b);
+    const ln = el("line", {x1,y1,x2,y2,class:"link",stroke:"var(--ok)","data-id":l.id}, gl);
+    ln.addEventListener("click", ()=>select(l.id));
+    const t = el("text", {x:(x1+x2)/2+6, y:(y1+y2)/2-4, class:"lbl"}, gl); t.textContent = l.id;
+    const hit = el("line", {x1,y1,x2,y2,stroke:"transparent","stroke-width":14,style:"cursor:pointer"}, gl);
+    hit.addEventListener("click", ()=>select(l.id));
+  }
+  for(const n of TOPO.nodes){
+    const [x,y]=xy(n.name), g=el("g",{class:"node"},gn);
+    const w = n.role==="host"?54:70;
+    el("rect",{x:x-w/2,y:y-15,width:w,height:30,rx:n.role==="host"?15:6,fill:ROLE_COLOR[n.role]||"#1f6feb",stroke:"#0d1117","stroke-width":2},g);
+    const t=el("text",{x,y:y+4,"text-anchor":"middle"},g); t.textContent=n.name;
+    const tt=el("title",{},g); tt.textContent=`${n.name} ${n.vendor||""} ${n.model||""} ${n.site||""}`;
+  }
+  const ls=$("#inj-link"), ty=$("#inj-type");
+  TOPO.links.forEach(l=>ls.add(new Option(`${l.id} ${l.a}-${l.b}`, l.id)));
+  TOPO.fault_types.forEach(f=>ty.add(new Option(f.label, f.id)));
+  const upd=()=>{const u=UNIT[ty.value];$("#inj-unit").textContent=u[0];$("#inj-val").value=u[1];$("#inj-val").disabled=ty.value==="link_down";};
+  ty.onchange=upd; upd();
+  $("#btn-inj").onclick=async()=>{
+    const r=await fetch("/api/inject",{method:"POST",body:JSON.stringify({link:ls.value,type:ty.value,value:+$("#inj-val").value})});
+    const j=await r.json(); $("#inj-msg").textContent = j.ok?`已注入：${j.label}`:`失败：${j.error}`;
+  };
+  $("#btn-clr").onclick=async()=>{await fetch("/api/clear",{method:"POST",body:"{}"});$("#inj-msg").textContent="已清除全部故障";};
+  tick(); setInterval(tick, 1000); setInterval(series, 2000);
+}
+
+function select(id){SEL=id; document.querySelectorAll(".link").forEach(e=>e.classList.toggle("sel", e.dataset.id===id)); $("#inj-link").value=id; series();}
+
+async function tick(){
+  let s; try{ s = await (await fetch("/api/status")).json(); }catch(e){ $("#sub").textContent="与后台连接中断，重试中…"; return; }
+  LAST = s;
+  $("#sub").textContent = `拓扑 ${TOPO.name} · ${TOPO.nodes.length} 设备 / ${TOPO.links.length} 链路 · 后端 ${s.backend} · 模型 ${s.model||"-"} · 周期 ${s.interval_s}s`;
+  $("#k-up b").textContent = fmtDur(s.uptime_s);
+  $("#k-round b").textContent = s.round;
+  const inf = s.infer && s.infer.p99_ms; $("#k-inf b").textContent = inf!=null? inf.toFixed(2)+" ms":"-";
+  $("#k-inf").className = "kpi "+(inf!=null?(inf<=100?"good":"bad"):"");
+  const bw = s.overhead && s.overhead.pct_of_min_link; $("#k-bw b").textContent = bw!=null? bw.toFixed(3)+" %":"-";
+  $("#k-bw").className = "kpi "+(bw!=null?(bw<5?"good":"bad"):"");
+  const r=s.resource||{}; $("#k-cpu b").textContent = r.cpu_pct!=null? `${r.cpu_pct.toFixed(1)}% / ${Math.round(r.rss_mb)}M`:"-";
+  $("#k-al b").textContent = `${s.alarms_total} / ${s.suppressed}`;
+  const all = s.active_alarms || (s.active_alarm ? [s.active_alarm] : []);
+  const alarmLinks = all.flatMap(a => a.links || [a.link_id]);
+  document.querySelectorAll(".link").forEach(e=>{
+    const id=e.dataset.id, h=s.link_health[id]||0, st=s.link_state[id];
+    let c = h>=0.75?"var(--bad)":h>=0.35?"var(--warn)":"var(--ok)";
+    // 有活动告警时只有告警链路标红，其余链路的次生异常（绕行、共享路径）降为"可疑"
+    if(alarmLinks.length && !alarmLinks.includes(id) && h>=0.75) c="var(--warn)";
+    if(alarmLinks.includes(id)) c="var(--bad)";
+    e.setAttribute("stroke", c);
+    e.setAttribute("stroke-dasharray", st && !st.adj_up ? "8 6":"");
+    e.classList.toggle("alarm", alarmLinks.includes(id));
+  });
+  renderAlarm(s);
+  $("#events").innerHTML = s.events.map(e=>`<div><span class="t">${ts(e.ts)} #${e.round}</span><span class="k-${e.kind}">${esc(e.msg)}</span></div>`).join("") || '<div class="meta">暂无事件</div>';
+  const gt = s.ground_truth||[];
+  $("#truth").innerHTML = gt.length? "当前注入（真值，仅演示可见）："+gt.map(g=>esc(g.label)).join("；") : "当前未注入故障";
+  if(s.round % 3===0) history();
+}
+
+function renderAlarm(s){
+  const a = s.active_alarm, box=$("#alarm");
+  if(!a){ box.innerHTML = `<div class="alarm-empty">● 网络运行正常${s.detector.active?'<span class="meta">（判决器检测到异常迹象，研判中）</span>':''}</div>`; return; }
+  const adv=a.advice||{}, ev=(a.evidence||{});
+  const gt=(s.ground_truth||[]);
+  const others = (s.active_alarms||[]).filter(x=>x.alarm_id!==a.alarm_id);
+  const hit = a.node ? a.links.every(l=>gt.some(g=>g.type==="link_down" && g.link===l))   // 设备宕机：其全部链路均为注入的中断（可同时有别处故障）
+                     : gt.some(g=>g.link===a.link_id && g.type===a.fault_type);
+  box.innerHTML = `
+    <div><span class="badge sev-${a.severity}">${{critical:"紧急",major:"重要",minor:"一般"}[a.severity]}</span><span class="meta">${esc(a.alarm_id)} · ${esc(a.category)} · 第 ${a.first_round} 轮</span></div>
+    <div class="atitle">${esc(a.node ? "设备 "+a.node : a.link_id)} ${esc(a.fault_type_cn)}</div>
+    <div class="meta">${esc(a.endpoints)}${a.site?" · "+esc(a.site):""}</div>
+    <div class="conf"><div style="width:${Math.round(a.confidence*100)}%"></div></div>
+    <div class="meta">置信度 ${(a.confidence*100).toFixed(0)}% · 推理 ${a.infer_ms} ms · 追加精测 ${a.probes_used} 次 · 备选：${(ev.candidates||[]).slice(1).map(c=>esc(`${c.link||""} ${c.type}`)).join("，")||"-"}</div>
+    <div style="margin-top:10px"><b>研判依据</b><ul class="ev">${(ev.items||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+    <div class="steps"><b>处置建议</b>${(adv.steps||[]).map((st,i)=>`<div class="step">${i+1}. ${esc(st.step)}${(st.cmds||[]).map(c=>`<div class="cmd">${esc(c)}</div>`).join("")}</div>`).join("")}</div>
+    ${adv.rehearsal?`<div class="reh">等价网络预演：${esc(adv.rehearsal.action)} → <span class="${adv.rehearsal.feasible?"ok":"bad"}">${adv.rehearsal.feasible?"可行":"不可行"}</span>，${esc(adv.rehearsal.detail)}</div>`:""}
+    ${others.length?`<div class="meta" style="margin-top:8px">另有 ${others.length} 条活动告警：${others.map(x=>esc(`${x.alarm_id} ${x.node?"设备 "+x.node:x.link_id} ${x.fault_type_cn}`)).join("；")}</div>`:""}
+    ${gt.length?`<div class="truth">与注入真值比对：<span class="${hit?"ok":"bad"}">${hit?"✓ 定位与类型均正确":"✗ 不一致"}</span></div>`:""}`;
+}
+
+async function history(){
+  const h = await (await fetch("/api/alarms?n=12")).json();
+  $("#hist").innerHTML = h.map(a=>`<tr><td>${esc(a.alarm_id)}</td><td>${ts(a.ts)}</td><td>${esc(a.fault_type_cn)}</td><td>${esc(a.link_id)}</td><td>${(a.confidence*100).toFixed(0)}%</td><td class="${a.cleared_ts?"ok":"bad"}">${a.cleared_ts?"已恢复":"活动"}</td></tr>`).join("");
+}
+
+async function series(){
+  if(!SEL) return;
+  const d = await (await fetch("/api/series?link="+SEL)).json();
+  const l = TOPO.links.find(x=>x.id===SEL);
+  $("#sel-title").textContent = `链路 ${SEL} 测量（${l.a} ↔ ${l.b}，${l.bw_mbps}Mbps，cost ${l.cost}）`;
+  const svg=$("#spark"); svg.innerHTML="";
+  const keys=Object.keys(d), colors=["#58a6ff","#f0883e","#3fb37f"];
+  let mx=1; keys.forEach(k=>d[k].forEach(p=>{if(p.rtt!=null) mx=Math.max(mx,p.rtt);}));
+  keys.forEach((k,i)=>{
+    const pts=d[k], n=pts.length; if(!n) return;
+    const path=pts.map((p,j)=>p.rtt==null?null:`${(j/(Math.max(n-1,1)))*400},${105-(p.rtt/mx)*95}`).filter(Boolean).join(" ");
+    el("polyline",{points:path,fill:"none",stroke:colors[i%3],"stroke-width":1.5},svg);
+    pts.forEach((p,j)=>{ if(p.rtt==null) el("circle",{cx:(j/(Math.max(n-1,1)))*400,cy:104,r:2.5,fill:"var(--bad)"},svg); });
+  });
+  const st = LAST && LAST.link_state[SEL];
+  $("#sel-meta").innerHTML = keys.map((k,i)=>{const p=d[k][d[k].length-1]||{};return `<span style="color:${colors[i%3]}">■</span> ${esc(k)} RTT ${p.rtt??"不可达"} ms 丢包 ${p.loss!=null?(p.loss*100).toFixed(0)+"%":"-"}`;}).join("<br>")
+    + `<br>纵轴上限 ${mx.toFixed(1)} ms · 红点=不可达 · OSPF ${st?(st.adj_up?"邻接正常":"邻接断开")+" cost "+st.cost:"-"}`;
+}
+init();
+</script>
+</body>
+</html>
