@@ -13,7 +13,7 @@ security problems privately as described in [SECURITY.md](SECURITY.md).
 | Module | Contents | Good places to start |
 |---|---|---|
 | `edgefdl/intake/` | Intake form, extraction of devices and links from device configurations and LLDP tables | Parsers for further vendors' configuration syntax, clearer error messages |
-| `edgefdl/topology.py` | Topology model, IP plan, OSPF shortest paths, monitored targets, coverage planning | Input validation of names and addresses, parallel links between two devices |
+| `edgefdl/topology.py` | Topology model, input validation, IP plan, OSPF shortest paths, monitored targets, coverage planning | Parallel links between two devices, further IP-plan checks |
 | `edgefdl/vnet/` | Equivalent virtual network: `sim`, `netns`, `lxd` backends, FRR configuration | Running the `lxd` backend on hardware, more real-stack checks |
 | `edgefdl/faults/` | Fault model, injector (`tc`, `ip`, `vtysh` commands), sample generator | New fault types: **open an issue first** (see below) |
 | `edgefdl/measure/` | Measurement data model, probe commands and parsers, CSV store | Readers for SNMP and device-native NQA / IP SLA results |
@@ -21,7 +21,7 @@ security problems privately as described in [SECURITY.md](SECURITY.md).
 | `edgefdl/core/` | Detector, orchestration engine, alarm sinks, HTTP API, dashboard | New alarm sinks, dashboard improvements; changes to the detector or the engine: **open an issue first** |
 | `edgefdl/bench.py`, `edgefdl/robust.py`, `scripts/` | Self-test, robustness harness, comparison script, real-stack smoke test | New robustness conditions, scenario coverage |
 
-Issues labelled `good first issue` are prepared for first-time contributors.
+Issues suitable for first-time contributors carry the label `good first issue`.
 
 **Contributions that need no code are just as valuable:**
 
@@ -44,8 +44,8 @@ Issues labelled `good first issue` are prepared for first-time contributors.
 
 ## Development environment
 
-EdgeFDL needs Linux and Python 3.8 or later (the published results were produced with Python 3.13 and PyTorch 2.9
-on CPU). No GPU is needed.
+EdgeFDL needs Linux, Python 3.8 or later and PyTorch 2.0 or later (the published results were produced with Python
+3.13 and PyTorch 2.9.1, a CUDA 12.8 build run on the CPU). No GPU is needed.
 
 ```bash
 git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
@@ -57,7 +57,8 @@ python -m unittest discover -s tests
 
 The unit tests use the `sim` backend only and need neither root, Docker nor network access. For the full offline
 pipeline (`python -m edgefdl pipeline --out runs/<name> --workers 16`, about 15 minutes on CPU) and the robustness
-suite (`python -m edgefdl robust`, about 10 minutes with 40 workers) see [docs/quickstart.md](docs/quickstart.md).
+suite (`python -m edgefdl robust --workers 40`, about 3.5 minutes with 40 workers) see
+[docs/quickstart.md](docs/quickstart.md).
 Everything these commands generate goes to `runs/`, which git ignores.
 
 The real protocol stack (Linux network namespaces, FRR OSPF, `tc`) runs in a privileged Docker container, so the host
@@ -142,26 +143,34 @@ such changes:
    default seed:
 
    ```bash
-   python -m edgefdl pipeline --out runs/<name> --workers 16
-   python -m edgefdl robust --model runs/<name>/model.pt --out runs/<name>/robust
+   mkdir -p runs/<name>
+   python -m edgefdl pipeline --out runs/<name> --workers 16 --no-bench | tee runs/<name>/pipeline.log
+   python -m edgefdl bench --model runs/<name>/model.pt --out runs/<name>/bench --rounds 51840
+   python -m edgefdl robust --model runs/<name>/model.pt --out runs/<name>/robust --workers 40
    ```
 
+   The published self-test is the 72-hour-equivalent run (51,840 rounds); `pipeline` alone would run a 24-hour one.
    Copy the outputs into `results/` (`model.pt`, `baseline.json`, `eval_test.json`, `eval_test_rand.json`,
    `bench/bench.json` as `bench.json`, `robust/robust.json` as `robust.json`, and the console output of the
-   pipeline as `pipeline.log`), update the tables in README.md, README.zh-CN.md and docs/results.md from these files, and
-   record the change in [CHANGELOG.md](CHANGELOG.md). Numbers that cannot be reproduced from committed raw data do
+   pipeline, `runs/<name>/pipeline.log`), update the tables in README.md, README.zh-CN.md and docs/results.md from
+   these files, and record the change in [CHANGELOG.md](CHANGELOG.md). Numbers that cannot be reproduced from committed raw data do
    not go into the documentation ([GOVERNANCE.md](GOVERNANCE.md)).
-5. Changes to the measurement commands or fault injection also need `scripts/lab.sh smoke` to pass.
+5. Changes to the measurement commands or fault injection also need `scripts/lab.sh smoke` to pass. Changes to the
+   simulator or the real-stack backends also re-run
+   `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out results/sim_vs_stack.json`.
 
 ## Where to add things
 
 ### Unit tests
 
-Tests use the standard library's `unittest` and are discovered from `tests/` (`test*.py`). The existing suite in
-[tests/test_core.py](tests/test_core.py) is grouped by area: `TopologyTest`, `SimTest`, `StoreTest`, `AgentTest`,
-`EngineTest`, `IntakeTest`, `ResidualTest` and `MultiAlarmEngineTest`. Add a test to the matching class, or create
-`tests/test_<area>.py` for a new area. Tests use the `sim` backend with fixed seeds, must not need root, Docker or
-network access, and should finish in seconds. Run a single class with
+Tests use the standard library's `unittest` and are discovered from `tests/` (`test*.py`). The suite is grouped by
+area: [tests/test_core.py](tests/test_core.py) has `TopologyTest`, `SimTest`, `StoreTest`, `AgentTest`,
+`EngineTest`, `IntakeTest`, `ResidualTest` and `MultiAlarmEngineTest`; [tests/test_engine.py](tests/test_engine.py)
+has `SinkTest`, `JsonSafeTest`, `ApiTest` and `RehearsalTest`; [tests/test_infra.py](tests/test_infra.py) has
+`TopologyValidationTest`, `VnetDryRunTest`, `CsvLogTest`, `ReproducibilityTest`, `BundleLoadTest` and
+`IntakeInfraTest`. Tests that need the released model read `results/model.pt`. Add a test to the matching class,
+or create `tests/test_<area>.py` for a new area. Tests use the `sim` backend with fixed seeds, must not need root,
+Docker or network access, and should finish in seconds. Run a single class with
 `python -m unittest tests.test_core.EngineTest`.
 
 ### Real-stack checks

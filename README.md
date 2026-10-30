@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/seuclkzsd/EdgeFDL)](https://github.com/seuclkzsd/EdgeFDL/releases)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue.svg)](pyproject.toml)
 
-[Documentation](docs/index.md) · [Demo video (Chinese narration, 6 min 19 s)](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
+[Documentation](docs/index.md) · [Demo video (Chinese narration, 6 min 40 s)](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
 
 ![Left: on the demo topology a delay on link L1 makes 16 of the 36 monitored targets cross their thresholds, while EdgeFDL raises one alarm naming L1 and the fault type. Right: type + location accuracy on the independent test set (link down 100.00%, performance degradation 98.73%, route drift 100.00%) against the targets, and three self-test figures](docs/images/hero.png)
 
@@ -19,26 +19,26 @@ the EMS, and only bandwidth estimates and on-demand deep probes run between the 
 network every 5 s with light probes; when an anomaly persists, a small DDQN agent names **the faulty link and the fault
 type** (link down, delay, loss, jitter, bandwidth degradation, route drift) and raises **one alarm** with the evidence,
 vendor-specific troubleshooting commands and remediation actions rehearsed on an equivalent virtual network. For L1 that
-is a single alarm naming L1 and the fault type; for L3, coverage planning adds a device-native NQA / IP SLA probe. The
-agent is trained for each network without production fault data: faults are injected into an equivalent virtual
-network built from the network's own topology.
+is a single alarm naming L1 and the fault type; for L3, coverage planning adds a device-native NQA / IP SLA probe,
+which the operator configures once on a device and EdgeFDL only reads. The agent is trained for each network without
+production fault data: faults are injected into an equivalent virtual network built from the network's own topology.
 
 ## Capabilities at a glance
 
 | Capability | What it does | Evidence |
 |---|---|---|
-| Names the link and the fault type | Six fault types on any link. Type + location accuracy on an independent test set of 10,000 samples: link down 100.00%, performance degradation (delay, loss, jitter, bandwidth) 98.73%, route drift 100.00% (targets ≥98% / ≥95% / ≥95%); false-alarm rate on normal samples 0.07%. Online: 84/84 single-fault scenarios (15 links × 5 types + route drift on 9 router–router links) alarmed with the right type and link, mean time to alarm 37.9 s | [Results](docs/results.md) · [`eval_test.json`](results/eval_test.json) · [`bench.json`](results/bench.json) |
+| Names the link and the fault type | Five fault types on any link (link down, delay, loss, jitter, bandwidth) and route drift on router–router links. Type + location accuracy on an independent test set of 10,000 samples: link down 100.00%, performance degradation (delay, loss, jitter, bandwidth) 98.73%, route drift 100.00% (targets ≥98% / ≥95% / ≥95%); false-alarm rate on normal samples 0.07%. Online: 84/84 single-fault scenarios (15 links × 5 types + route drift on 9 router–router links) alarmed with the right type and link, mean time to alarm 37.9 s | [Results](docs/results.md) · [`eval_test.json`](results/eval_test.json) · [`bench.json`](results/bench.json) |
 | One alarm per fault | One alarm per faulty link, not one per affected target. A device that goes down becomes one device-level alarm covering all its links (60/60 trials). Two simultaneous link faults: first alarm correct in 100% of 300 trials, both reported in 97.67%, and after one is repaired its alarm clears while the other stays (100% of the trials in which both were active) | [Algorithms](docs/algorithms.md) · [`robust.json`](results/robust.json) |
 | Robust under harsh conditions | 24 h simulated runs under 16 conditions (heavier and longer transients, missing measurements, ICMP rate limiting, background jitter, busy-hour drift): 0 false alarms per day in 12 of them, 1–2 in three, 9 when every transient lasts 15 s. Accuracy over the 84 scenarios stays between 96.4% and 100.0% under the 8 conditions tested | [Results](docs/results.md) · [`robust.json`](results/robust.json) |
-| Lightweight | p99 0.575 ms per inference (PyTorch, 1 thread; NumPy engine 0.302 ms), 36,041 parameters; probe traffic 222.0 kbps = 0.222% of the narrowest 100 Mbps link even if all of it crossed that link; compute 0.0868% of one core; RSS 528.6 MB, mostly the PyTorch runtime (targets: ≤100 ms, <5%, ≤20%) | [`bench.json`](results/bench.json) |
+| Lightweight | p99 0.575 ms per forward pass of the agent (PyTorch, 1 thread; NumPy engine 0.302 ms), 36,041 parameters; probe traffic 222.0 kbps = 0.222% of the narrowest 100 Mbps link even if all of it crossed that link; compute 0.0868% of one core; RSS 528.6 MB, mostly the PyTorch runtime (targets: ≤100 ms, <5%, ≤20%) | [`bench.json`](results/bench.json) |
 | No production fault data needed | An equivalent virtual network enumerates the fault space (231 fault primitives on the demo topology). Samples are cut exactly when the online detector would wake the agent (trigger-aligned) and are domain-randomized (longer transients, ICMP rate limiting, background jitter). 60,000 samples in 87.8 s with 16 processes; training about 4.4 min on 8 CPU threads | [Architecture](docs/architecture.md) · [`pipeline.log`](results/pipeline.log) |
-| Validated on a real protocol stack | Network namespaces + FRR OSPF + tc in a privileged container, 26 checks, 26/26 in each of 3 runs: link down → both interfaces unreachable and traffic reroutes; +20 ms one-way delay → RTT +40.0 ms; bandwidth cut to 20% → deep probe 200 Mbps; OSPF cost ×10 → path avoids the link, LSDB cost 100; RTT within 0.8 ms of the simulator per target; about 290 KB of probe traffic per round (≈465 kbps, with 10 pings per target instead of the default 5) | [`results/smoke/`](results/smoke/) |
+| Validated on a real protocol stack | Network namespaces + FRR OSPF + tc in a privileged container, 26 checks, 26/26 in each of 3 runs: link down → both interfaces unreachable and traffic reroutes; +20 ms one-way delay → RTT +40.0 ms; bandwidth cut to 20% → deep probe 200 Mbps; OSPF cost ×10 → path avoids the link, LSDB cost 100; baseline RTT of each of the 37 targets within 0.74 ms of the simulator (median 0.39 ms); about 290 KB of probe traffic per round (≈465 kbps, with 10 pings per target instead of the default 5) | [`results/smoke/`](results/smoke/) · [`sim_vs_stack.json`](results/sim_vs_stack.json) |
 | Integrations | Web dashboard, REST API, Syslog (RFC 5424), Webhook (JSON), Prometheus `/metrics`, CSV logs with schema files | [API](docs/api.md) · [Deployment](docs/deployment.md) |
 
 **Test conditions.** Accuracy, latency and robustness figures come from the analytic simulation backend on the
 12-device demo topology ([`configs/demo_topology.yaml`](configs/demo_topology.yaml): core, two aggregation and four
 access routers, four hosts and the EMS; 15 links of 1000 / 100 Mbps), with the released model
-[`results/model.pt`](results/model.pt), on 2 × Intel Xeon Gold 6336Y (96 logical CPUs), Python 3.13, PyTorch 2.9 (CPU).
+[`results/model.pt`](results/model.pt), on 2 × Intel Xeon Gold 6336Y (96 logical CPUs), Python 3.13, PyTorch 2.9.1 (CUDA 12.8 build, run on CPU).
 The test set uses standard conditions and a seed different from training, and is scored end to end: a fault that never
 triggers the detector counts as missed. Online runs use simulated time with 5 s rounds and a 15% chance per round of a
 one-round delay spike or loss burst on a random link; the robustness suite uses seed 21. Raw outputs are in
@@ -58,11 +58,11 @@ Open <http://127.0.0.1:8460>. The topology is colored by link health. In the fau
 link, a fault type and a value and press 注入故障 (inject). Once the anomaly has persisted and the diagnosis is confirmed,
 the alarm panel shows the faulty link, both interfaces, the evidence, the vendor commands and the result of the
 rehearsal on the equivalent network; 清除全部 (clear all) repairs the fault and the alarm clears. `--interval 2`
-shortens the measurement period from 5 s to 2 s for the demo. Training a model for your own network and running the
-service with an on-site baseline (`--learn-rounds 120`), `--no-inject` and alarm sinks is described in
+shortens the measurement period from 5 s to 2 s for the demo. Training a model for your own network, running it on
+that network's equivalent virtual network and connecting alarm sinks is described in
 [docs/deployment.md](docs/deployment.md).
 
-![Dashboard with an alarm for link L6 down: topology with the faulty link marked, alarm details with evidence and Huawei commands, link measurements, fault-injection panel and event stream (the UI is in Chinese)](docs/media/dash_linkdown.png)
+![Dashboard with an alarm for link L6 down: topology with the faulty link marked, alarm details with evidence and H3C Comware commands, link measurements, fault-injection panel and event stream (the UI is in Chinese)](docs/media/dash_linkdown.png)
 
 *Dashboard during the demo: link L6 is down. The alarm names the link and both interfaces, lists the evidence, gives
 vendor commands and reports that the rehearsed OSPF takeover to the backup path is feasible. The UI is in Chinese.*
@@ -74,11 +74,12 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 | Full pipeline: baseline → 60,000 samples → training → evaluation → self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | about 15 min on CPU |
 | Accuracy on the test set | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz` | `test.npz` is written by the pipeline |
 | Self-test | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 rounds × 5 s = 72 h of simulated time |
-| Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | about 10 min with 40 workers |
+| Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | about 3.5 min with 40 workers |
 | Real protocol stack | `scripts/lab.sh build && scripts/lab.sh smoke` | Docker with privileged containers; 26 checks |
-| Unit tests | `python -m unittest discover -s tests` | 34 tests |
+| Unit tests | `python -m unittest discover -s tests` | 71 tests |
 
-The pipeline trains a new model in `runs/v6/`; the figures on this page were measured with `results/model.pt`. The lab
+The pipeline trains a new model in `runs/v6/`, which is not identical to the released one; the figures on this page
+were measured with `results/model.pt`, and evaluating that bundle reproduces the test-set figures exactly. The lab
 image installs FRR, iperf3, traceroute and iproute2 on Debian 12; set `EDGEFDL_APT_MIRROR` to use a local Debian mirror.
 `python -m edgefdl.vnet.lxd configs/demo_topology.yaml --uplink ems=enp3s0` prints the LXD deployment commands (dry run).
 
@@ -128,7 +129,8 @@ edgefdl/            the Python package (python -m edgefdl ...)
   bench.py robust.py  self-test and robustness harnesses
 configs/            demo topology and a sample intake form with device configurations
 results/            released model, result JSON files, pipeline log, real-stack smoke logs
-scripts/            lab container (lab.sh, Dockerfile), real-stack smoke test, multi- vs single-alarm comparison
+scripts/            lab container (lab.sh, Dockerfile), real-stack smoke test, simulator vs real-stack RTT comparison,
+                    multi- vs single-alarm comparison
 tests/              unit tests
 tools/              SPDX header check, CI script, figure generation
 docs/               documentation, images and dashboard screenshots
@@ -166,7 +168,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
   author  = {seuclkzsd},
   title   = {EdgeFDL: autonomous link-level fault detection and localization for edge networks},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.1.1},
   url     = {https://github.com/seuclkzsd/EdgeFDL},
   license = {Apache-2.0}
 }
@@ -174,7 +176,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 
 ## Limitations and next steps
 
-- In v0.1.0, `serve` measures the equivalent virtual network (`sim`, `netns` or `lxd` backend); connecting it to a
+- In v0.1.1, `serve` measures the equivalent virtual network (`sim`, `netns` or `lxd` backend); connecting it to a
   physical network is the first item of the roadmap. Accuracy and robustness figures come from the analytic
   simulation backend on the 12-device demo topology. The real protocol stack (netns + FRR + tc) is validated by smoke
   tests, not by accuracy runs; for the LXD backend the generated commands are verified (dry run) but have not yet been
@@ -182,9 +184,10 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 - The harsh conditions (ICMP rate limiting, busy-hour drift, long transients) are modelled by us, not measured on
   production networks. The 72 h figure is simulated time; a 72-hour real-time run is planned.
 - Light probes (5 packets per target per round) do not detect one-way loss below about 3%, or a bandwidth reduction
-  that leaves more than about 70% of the baseline; with 5% ICMP rate limiting, light loss on backup links with few
-  monitored paths is sometimes missed or mislocated. Faults behind the management uplink (L15) cannot be told apart
-  from an uplink fault.
+  that leaves more than about 70% of the baseline. With routers dropping 5% of ICMP replies, some 15% loss faults
+  in the online scenarios were missed on L8 and L10, each crossed by a single monitored path, or attributed to a
+  neighbouring link (L2 reported as L7). Faults behind the management uplink (L15) cannot be told apart from an
+  uplink fault.
 - Heavy loss (≥30%) makes real OSPF adjacencies flap, which the simulator does not model yet.
 - One model per topology, by design; transfer of the shared encoder across topologies is not yet validated.
 - Code comments, CLI help and the dashboard are in Chinese; the documentation is in English.

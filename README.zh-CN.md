@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/seuclkzsd/EdgeFDL)](https://github.com/seuclkzsd/EdgeFDL/releases)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue.svg)](pyproject.toml)
 
-[文档（英文）](docs/index.md) · [演示视频（中文配音，6 分 19 秒）](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0) · [版本发布](https://github.com/seuclkzsd/EdgeFDL/releases) · [English](README.md)
+[文档（英文）](docs/index.md) · [演示视频（中文配音，6 分 40 秒）](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [版本发布](https://github.com/seuclkzsd/EdgeFDL/releases) · [English](README.md)
 
 > 本文是 [README.md](README.md) 的中文译本，**以英文版为准**。其余文档以英文撰写。
 
@@ -17,25 +17,25 @@
 备份链路 L3 劣化时，没有任何目标越过阈值。**EdgeFDL** 运行在网管服务器上，对设备只读：ping 与 traceroute 都从网管服务器
 发起，只有带宽估计和按需精测在链路两端之间进行。它每 5 秒用轻量探测测量一次网络；异常持续出现时，一个小型 DDQN
 智能体指出**故障链路与故障类型**（链路中断、时延、丢包、抖动、带宽劣化、路由漂移），并给出**一条告警**，附研判依据、
-分厂商的排查命令，以及在等价虚拟网络上预演过的处置措施。对 L1，就是一条指明 L1 与故障类型的告警；对 L3，覆盖规划会自动补上
-一个设备侧的 NQA / IP SLA 探测。智能体按每个网络单独训练，不需要生产网络的故障数据：故障注入在依据该网络自身拓扑构建的等价虚拟网络中进行。
+分厂商的排查命令，以及在等价虚拟网络上预演过的处置措施。对 L1，就是一条指明 L1 与故障类型的告警；对 L3，覆盖规划会补上
+一个设备侧的 NQA / IP SLA 探测，由运维在设备上配置一次，EdgeFDL 只读取其结果。智能体按每个网络单独训练，不需要生产网络的故障数据：故障注入在依据该网络自身拓扑构建的等价虚拟网络中进行。
 
 ## 能力一览
 
 | 能力 | 做什么 | 证据 |
 |---|---|---|
-| 指出链路与故障类型 | 任意链路上的六类故障。独立测试集（10,000 个样本）上的类型+定位准确率：链路中断 100.00%，性能劣化（时延、丢包、抖动、带宽）98.73%，路由漂移 100.00%（设计指标 ≥98% / ≥95% / ≥95%）；正常样本误报率 0.07%。在线运行：84/84 个单故障场景（15 条链路 × 5 类 + 9 条路由器间链路的路由漂移）均以正确的类型与链路告警，平均发现时间 37.9 s | [结果](docs/results.md) · [`eval_test.json`](results/eval_test.json) · [`bench.json`](results/bench.json) |
+| 指出链路与故障类型 | 任意链路上的五类故障（链路中断、时延、丢包、抖动、带宽），以及路由器间链路上的路由漂移。独立测试集（10,000 个样本）上的类型+定位准确率：链路中断 100.00%，性能劣化（时延、丢包、抖动、带宽）98.73%，路由漂移 100.00%（设计指标 ≥98% / ≥95% / ≥95%）；正常样本误报率 0.07%。在线运行：84/84 个单故障场景（15 条链路 × 5 类 + 9 条路由器间链路的路由漂移）均以正确的类型与链路告警，平均发现时间 37.9 s | [结果](docs/results.md) · [`eval_test.json`](results/eval_test.json) · [`bench.json`](results/bench.json) |
 | 一个故障一条告警 | 每条故障链路一条告警，而不是每个受影响目标一条。设备整机宕机聚合为一条覆盖其全部链路的设备级告警（60/60 次试验）。两条链路同时故障：300 次试验中首条告警 100% 正确，两处均报出 97.67%；修复其中一处后，该告警恢复而另一条保持（两条均处于活动状态的试验中 100%） | [算法](docs/algorithms.md) · [`robust.json`](results/robust.json) |
 | 恶劣条件下稳定 | 16 种条件（更强、更长的瞬时干扰，测量缺失，ICMP 限速，背景抖动，忙时时延抬升）各做 24 小时仿真长跑：其中 12 种每天 0 条无效告警，3 种每天 1–2 条，每次干扰持续 15 s 时每天 9 条。在测试的 8 种条件下，84 个场景的准确率保持在 96.4%–100.0% | [结果](docs/results.md) · [`robust.json`](results/robust.json) |
-| 轻量 | 单次推理 p99 0.575 ms（PyTorch，单线程；NumPy 引擎 0.302 ms），参数量 36,041；探测流量 222.0 kbps，即使全部经过最窄的 100 Mbps 链路也只占 0.222%；计算占单核 0.0868%；常驻内存 528.6 MB，主要是 PyTorch 运行时（设计指标：≤100 ms、<5%、≤20%） | [`bench.json`](results/bench.json) |
+| 轻量 | 智能体单次前向推理 p99 0.575 ms（PyTorch，单线程；NumPy 引擎 0.302 ms），参数量 36,041；探测流量 222.0 kbps，即使全部经过最窄的 100 Mbps 链路也只占 0.222%；计算占单核 0.0868%；常驻内存 528.6 MB，主要是 PyTorch 运行时（设计指标：≤100 ms、<5%、≤20%） | [`bench.json`](results/bench.json) |
 | 不需要生产故障数据 | 等价虚拟网络枚举故障空间（演示拓扑上 231 个故障原语）。样本恰好在在线判决器会唤醒智能体的时刻截取（触发对齐），并做域随机化（更长的瞬时干扰、ICMP 限速、背景抖动）。16 个进程 87.8 s 生成 60,000 个样本；8 个 CPU 线程训练约 4.4 分钟 | [架构](docs/architecture.md) · [`pipeline.log`](results/pipeline.log) |
-| 真实协议栈验证 | 特权容器内的网络命名空间 + FRR OSPF + tc，26 项检查，连续 3 次均 26/26 通过：链路中断 → 两端接口不可达且流量绕行；单向时延 +20 ms → RTT +40.0 ms；带宽降至 20% → 精测 200 Mbps；OSPF 开销 ×10 → 路径绕开该链路，LSDB 开销 100；各目标 RTT 与仿真后端相差不超过 0.8 ms；每轮探测流量约 290 KB（≈465 kbps，每目标 10 个 ping，默认为 5 个） | [`results/smoke/`](results/smoke/) |
+| 真实协议栈验证 | 特权容器内的网络命名空间 + FRR OSPF + tc，26 项检查，连续 3 次均 26/26 通过：链路中断 → 两端接口不可达且流量绕行；单向时延 +20 ms → RTT +40.0 ms；带宽降至 20% → 精测 200 Mbps；OSPF 开销 ×10 → 路径绕开该链路，LSDB 开销 100；37 个监测目标的基线 RTT 与仿真后端相差均不超过 0.74 ms（中位数 0.39 ms）；每轮探测流量约 290 KB（≈465 kbps，每目标 10 个 ping，默认为 5 个） | [`results/smoke/`](results/smoke/) · [`sim_vs_stack.json`](results/sim_vs_stack.json) |
 | 系统集成 | Web 大屏、REST API、Syslog（RFC 5424）、Webhook（JSON）、Prometheus `/metrics`、带 schema 文件的 CSV 日志 | [API](docs/api.md) · [部署](docs/deployment.md) |
 
 **测试条件。** 准确率、时延与鲁棒性数据均来自解析仿真后端与 12 设备演示拓扑
 （[`configs/demo_topology.yaml`](configs/demo_topology.yaml)：核心、两台汇聚和四台接入路由器、四台主机与网管服务器；
 15 条 1000 / 100 Mbps 链路），使用发布的模型 [`results/model.pt`](results/model.pt)，硬件为 2 × Intel Xeon Gold 6336Y
-（96 个逻辑 CPU），Python 3.13，PyTorch 2.9（CPU）。测试集为标准条件、随机种子与训练不同，按端到端口径统计：判决器从未
+（96 个逻辑 CPU），Python 3.13，PyTorch 2.9.1（CUDA 12.8 版本，在 CPU 上运行）。测试集为标准条件、随机种子与训练不同，按端到端口径统计：判决器从未
 触发的故障记为漏报。在线运行使用仿真时间，每轮 5 s，每轮有 15% 的概率在随机一条链路上出现单轮时延尖峰或突发丢包；
 鲁棒性测试的随机种子为 21。原始输出见 [`results/`](results/README.md)。
 
@@ -51,10 +51,10 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 
 浏览器打开 <http://127.0.0.1:8460>。拓扑按链路健康状态着色。在"故障注入"面板选择链路、故障类型和取值，点击"注入故障"。
 异常持续出现、研判得到确认后，告警面板会显示故障链路、两端接口、研判依据、厂商命令以及在等价网络上的预演结果；点击
-"清除全部"即修复故障，告警随之恢复。`--interval 2` 把测量周期从 5 s 缩短到 2 s，便于演示。为自己的网络训练模型，
-并以现场基线（`--learn-rounds 120`）、`--no-inject` 和告警外发运行服务，见 [docs/deployment.md](docs/deployment.md)。
+"清除全部"即修复故障，告警随之恢复。`--interval 2` 把测量周期从 5 s 缩短到 2 s，便于演示。为自己的网络训练模型、
+在该网络的等价虚拟网络上运行并接入告警外发，见 [docs/deployment.md](docs/deployment.md)。
 
-![运维大屏：链路 L6 中断告警，拓扑上标出故障链路，告警详情含研判依据与华为命令，下方为链路测量曲线、故障注入面板和事件流](docs/media/dash_linkdown.png)
+![运维大屏：链路 L6 中断告警，拓扑上标出故障链路，告警详情含研判依据与华三 Comware 命令，下方为链路测量曲线、故障注入面板和事件流](docs/media/dash_linkdown.png)
 
 *演示中的运维大屏：链路 L6 中断。告警指明链路与两端接口，列出研判依据和厂商命令，并给出预演结论：OSPF 切换到备份路径可行。*
 
@@ -65,11 +65,11 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 | 完整流水线：基线 → 60,000 个样本 → 训练 → 评估 → 自测 | `python -m edgefdl pipeline --out runs/v6 --workers 16` | CPU 约 15 分钟 |
 | 测试集准确率 | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz` | `test.npz` 由流水线生成 |
 | 指标自测 | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 轮 × 5 s = 72 小时仿真时间 |
-| 鲁棒性测试 | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | 40 个工作进程约 10 分钟 |
+| 鲁棒性测试 | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | 40 个工作进程约 3.5 分钟 |
 | 真实协议栈 | `scripts/lab.sh build && scripts/lab.sh smoke` | 需要 Docker 与特权容器；26 项检查 |
-| 单元测试 | `python -m unittest discover -s tests` | 34 个测试 |
+| 单元测试 | `python -m unittest discover -s tests` | 71 个测试 |
 
-流水线会在 `runs/v6/` 训练一个新模型；本页的数据都是用 `results/model.pt` 测得的。实验容器镜像基于 Debian 12，安装
+流水线会在 `runs/v6/` 训练一个新模型，它与发布的模型并不相同；本页的数据都是用 `results/model.pt` 测得的，评估这个模型包可原样复现测试集结果。实验容器镜像基于 Debian 12，安装
 FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用本地 Debian 镜像源。
 `python -m edgefdl.vnet.lxd configs/demo_topology.yaml --uplink ems=enp3s0` 打印 LXD 部署命令序列（不执行）。
 
@@ -116,7 +116,8 @@ edgefdl/            Python 包（python -m edgefdl ...）
   bench.py robust.py  指标自测与鲁棒性测试
 configs/            演示拓扑，以及带设备配置的采集表示例
 results/            发布的模型、结果 JSON、流水线日志、真实协议栈冒烟日志
-scripts/            实验容器（lab.sh、Dockerfile）、真实协议栈冒烟测试、多告警与单告警对照
+scripts/            实验容器（lab.sh、Dockerfile）、真实协议栈冒烟测试、仿真与真实协议栈 RTT 对比、
+                    多告警与单告警对照
 tests/              单元测试
 tools/              SPDX 许可头检查、CI 脚本、插图生成
 docs/               文档、插图与运维大屏截图
@@ -151,7 +152,7 @@ EdgeFDL 以 [Apache License 2.0](LICENSE) 发布；署名与第三方组件见 [
   author  = {seuclkzsd},
   title   = {EdgeFDL: autonomous link-level fault detection and localization for edge networks},
   year    = {2026},
-  version = {0.1.0},
+  version = {0.1.1},
   url     = {https://github.com/seuclkzsd/EdgeFDL},
   license = {Apache-2.0}
 }
@@ -159,13 +160,14 @@ EdgeFDL 以 [Apache License 2.0](LICENSE) 发布；署名与第三方组件见 [
 
 ## 局限与后续工作
 
-- 在 v0.1.0 中，`serve` 测量的是等价虚拟网络（`sim`、`netns` 或 `lxd` 后端）；接入物理网络是路线图的第一项。
+- 在 v0.1.1 中，`serve` 测量的是等价虚拟网络（`sim`、`netns` 或 `lxd` 后端）；接入物理网络是路线图的第一项。
   准确率与鲁棒性数据来自解析仿真后端与 12 设备演示拓扑。真实协议栈（netns + FRR + tc）通过冒烟测试验证，尚未做准确率
   测试；LXD 后端已验证生成的命令（不执行），尚未在硬件上运行。
 - 恶劣条件（ICMP 限速、忙时时延抬升、长时干扰）由我们建模，不是在生产网络上实测的。72 小时数据是仿真时间；72 小时实时
   长跑已列入计划。
-- 轻量探测（每轮每目标 5 个包）检测不到低于约 3% 的单向丢包，也检测不到剩余带宽仍在基线约 70% 以上的劣化；在 5% ICMP 限速下，
-  被监测路径少的备份链路上的轻度丢包有时会漏报或定位错误。网管上联（L15）之后的故障无法与上联本身的故障区分。
+- 轻量探测（每轮每目标 5 个包）检测不到低于约 3% 的单向丢包，也检测不到剩余带宽仍在基线约 70% 以上的劣化。路由器丢弃 5% 的 ICMP 应答时，
+  在线场景中部分 15% 丢包故障在只有一条监测路径经过的 L8、L10 上漏报，或被归到相邻链路（L2 报为 L7）。
+  网管上联（L15）之后的故障无法与上联本身的故障区分。
 - 重度丢包（≥30%）会使真实 OSPF 邻接震荡，仿真器暂未建模。
 - 按设计每个拓扑一个模型；共享编码器的跨拓扑迁移尚未验证。
 - 代码注释、命令行帮助和运维大屏为中文；文档为英文。

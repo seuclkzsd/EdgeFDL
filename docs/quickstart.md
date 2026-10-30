@@ -22,7 +22,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python3 -m venv .venv && . .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu    # CPU-only PyTorch (a much smaller download)
 pip install -r requirements.txt                                       # numpy, pyyaml, torch, psutil
-python -m edgefdl --version                                           # edgefdl 0.1.0
+python -m edgefdl --version                                           # edgefdl 0.1.1
 ```
 
 - The CPU-only PyTorch line is optional but recommended: EdgeFDL never uses a GPU, and the default PyTorch wheel for
@@ -31,7 +31,7 @@ python -m edgefdl --version                                           # edgefdl 
 - `pip install -e .` additionally installs an `edgefdl` command (`edgefdl --version`). Keep working from the
   checkout: the demo topology (`configs/`) and the released model (`results/`) live in the repository, not in the
   Python package.
-- Check the installation with the unit tests (34 tests, a few seconds):
+- Check the installation with the unit tests (71 tests, about 20 s):
 
   ```bash
   python -m unittest discover -s tests
@@ -55,15 +55,16 @@ backend = sim, logs = runs/live") and keeps running until you press Ctrl-C. Open
   probe-bandwidth tile reads correspondingly higher than at 5 s.
 - The simulator adds a one-round transient (a delay spike or a loss burst on a random link) with probability 0.1 per
   round (`--noise`), so you will occasionally see the detector wake up and the agent dismiss the anomaly.
-- The server listens on 127.0.0.1 only. On a remote machine, forward the port with SSH
-  (`ssh -L 8460:127.0.0.1:8460 <user>@<server>`) and open the same address locally; use `--port` if 8460 is taken.
+- The server listens on 127.0.0.1 only and answers only requests addressed to `localhost`, `127.0.0.1` or `::1`
+  (any port). On a remote machine, forward the port with SSH (`ssh -L 8460:127.0.0.1:8460 <user>@<server>`) and
+  open the same address locally; use `--port` if 8460 is taken.
 - Measurement and alarm logs are written to `runs/live/` (`--log-dir`); see [API, CSV logs](api.md#csv-logs).
 
 What the page shows:
 
 | Area (label on the page) | Content |
 |---|---|
-| Header tiles: 运行时长 · 测量轮次 · 单轮推理 p99 · 测量带宽占用 · 进程 CPU / 内存 · 告警 / 已过滤 | Uptime · measurement rounds · p99 inference time per round (target ≤ 100 ms) · probe traffic as a share of the narrowest link (target < 5%) · process CPU and memory · alarms raised / anomalies filtered by the agent |
+| Header tiles: 运行时长 · 测量轮次 · 单次前向推理 p99 (≤100ms) · 测量带宽占用 · 进程 CPU / 内存 · 告警 / 已过滤 | Uptime · measurement rounds · p99 time of one forward pass of the agent (target ≤ 100 ms) · probe traffic as a share of the narrowest link (target < 5%) · process CPU and memory · alarms raised / anomalies filtered by the agent |
 | 网络拓扑与链路健康 (topology and link health) | Links colored 正常 green (normal), 可疑 / 受影响 amber (suspect or affected), 异常 / 告警 red (anomalous or alarmed); a dashed line means the OSPF adjacency is down. Click a link to plot its measurements |
 | 链路测量 (link measurements) | RTT and loss of the targets on the selected link over the last 120 rounds |
 | 故障注入（演示 / 测试） (fault injection, demo and test) | Link, fault type and value; 注入故障 injects, 清除全部 clears every injected fault |
@@ -92,7 +93,7 @@ This takes about 6 to 8 measurement rounds; bandwidth faults take longer because
 estimated per round. In the self-test at the default 5 s interval the mean time to alarm over 84 scenarios is
 37.9 s (maximum 70 s), see [Results](results.md).
 
-![Dashboard while link L6 is down: the topology marks L6 red and dashed, the alarm panel names L6 and its interfaces, lists the evidence, the Huawei commands and the rehearsal result (the UI is in Chinese)](media/dash_linkdown.png)
+![Dashboard while link L6 is down: the topology marks L6 red and dashed, the alarm panel names L6 and its interfaces, lists the evidence, the H3C Comware commands and the rehearsal result (the UI is in Chinese)](media/dash_linkdown.png)
 
 The alarm panel contains, from top to bottom:
 
@@ -102,8 +103,8 @@ The alarm panel contains, from top to bottom:
 - the confidence, the inference time, the number of deep probes used, and the next-best candidate conclusions;
 - 研判依据 (evidence), for example "both interface addresses 10.10.0.21 / 10.10.0.22 unreachable", "OSPF adjacency
   agg2↔acc3 down", "100% of the monitored paths that crossed the link have been rerouted";
-- 处置建议 (remediation steps) with vendor commands for the two devices, here Huawei VRP
-  (`[agg2] display interface eth3`, …);
+- 处置建议 (remediation steps) with vendor commands for the two devices, here H3C Comware, the vendor of agg2 and
+  acc3 (`[agg2] display interface eth3`, …);
 - 等价网络预演 (rehearsal on the equivalent network): the remediation action, whether it is feasible (可行) and its
   effect, for example "7 monitored targets have switched to the backup path";
 - 与注入真值比对 (comparison with the injected fault): shown only in the demo, ✓ when link and type both match.
@@ -115,10 +116,11 @@ Things to try next:
 
 | Try | What you will see |
 |---|---|
-| Link down on L6 and a 20 ms delay on L1 at the same time | Two alarms. The second is found on the residual after subtracting the first (`…，扣除已有告警后发现`), and the panel says 另有 1 条活动告警 (one more active alarm). Clearing L6 alone clears only its alarm |
+| Link down on L6 and a 20 ms delay on L1 at the same time | Two alarms. The second is found on the residual after subtracting the first (`…，扣除已有告警后发现`), and the panel says 另有 1 条活动告警 (one more active alarm). Each alarm's rehearsal takes the other alarm into account (`已计入其他活动告警：…`). Clearing L6 alone clears only its alarm |
 | Link down on L2, L3, L6 and L7, all links of agg2 | One device-level alarm, 设备 agg2 设备宕机 (device agg2 down), covering L2/L3/L6/L7 instead of four link alarms |
 | Route drift ×10 on L4 | Paths move away from L4 and the OSPF cost of L4 becomes 100; one route-drift alarm |
-| Bandwidth 0.9 on L8, or loss 0.02 on L4 | No alarm: these are below what the light probes detect (one-way loss below about 3%, bandwidth above about 70% of the baseline) |
+| Bandwidth 0.9 on L8 | No alarm: a bandwidth that stays above about 70% of the baseline is below what the light probes detect |
+| Loss 0.02 on L4 | Usually no alarm; sometimes an alarm, which may name a wrong link. One-way loss below about 3% is below what the light probes resolve: in the fault-size sweep, 2% loss is named with the right type and link in 12.3% of the samples ([Results, section 4.3](results.md#43-fault-size-sensitivity)) |
 
 The same can be scripted through the REST API ([api.md](api.md)):
 
@@ -126,7 +128,7 @@ The same can be scripted through the REST API ([api.md](api.md)):
 curl -s -X POST -H 'Content-Type: application/json' \
      -d '{"type": "delay", "link": "L1", "value": 20}' http://127.0.0.1:8460/api/inject
 curl -s http://127.0.0.1:8460/api/status          # active_alarms, link health, events, ...
-curl -s -X POST -d '{}' http://127.0.0.1:8460/api/clear
+curl -s -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8460/api/clear
 ```
 
 ## 4. Train a model with the pipeline
@@ -159,7 +161,8 @@ python -m edgefdl pipeline --out runs/tiny --n 2000 --iters 300 --no-bench --wor
 ```
 
 Serve a model you trained exactly like the bundled one: `python -m edgefdl serve --model runs/v6/model.pt --interval 2`.
-The figures on the [Results](results.md) page were measured with `results/model.pt`.
+The figures on the [Results](results.md) page were measured with `results/model.pt`; a model you train is a
+different model, and its figures differ from the published ones.
 
 ## 5. Evaluation, self-test and robustness suite
 
@@ -167,7 +170,7 @@ The figures on the [Results](results.md) page were measured with `results/model.
 |---|---|---|
 | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz --json runs/v6/eval_check.json` | Accuracy per fault category and type, end to end (a fault the detector never triggers on counts as missed) | Tables on the terminal; the JSON file with `--json` |
 | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | Self-test: inference latency (PyTorch and NumPy engines), a long run with transient noise (51,840 rounds × 5 s = 72 h of simulated time; the default is 17,280 rounds = 24 h), probe overhead, CPU and memory, and 84 online fault scenarios | `runs/bench/bench.json` |
-| `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | Robustness suite: 24 h runs under harsher conditions (heavier and longer transients, missing measurements, ICMP rate limiting, background jitter, busy-hour drift), offline accuracy under the same conditions, fault-size sweep, two simultaneous faults, device down. About 10 minutes with 40 workers | `runs/robust/robust.json`, per-run engine logs in `runs/robust/logs/` |
+| `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | Robustness suite: 24 h runs under harsher conditions (heavier and longer transients, missing measurements, ICMP rate limiting, background jitter, busy-hour drift), offline accuracy under the same conditions, fault-size sweep, two simultaneous faults, device down. About 3.5 minutes with 40 workers | `runs/robust/robust.json`, per-run engine logs in `runs/robust/logs/` |
 
 `eval` needs a test set from the pipeline (`runs/v6/test.npz`). The released outputs of the same commands are in
 [`results/`](../results/README.md) (`eval_test.json`, `bench.json`, `robust.json`) and are explained in
@@ -222,11 +225,13 @@ Other entry points:
 
 ```bash
 scripts/lab.sh shell                                                            # interactive shell in the container
-scripts/lab.sh run python3 -m edgefdl baseline --backend netns -o /tmp/baseline.json   # learn a baseline on the real stack
+scripts/lab.sh run python3 -m edgefdl baseline --backend netns -o runs/lab/baseline.json   # learn a baseline on the real stack
 ```
 
-The container mounts the repository at `/work` and runs with `--network none`; files it writes into the repository
-belong to root. The image carries the network tools but not PyTorch, so it runs the backend-level commands
+The container mounts the repository at `/work`, runs with `--network none` and is removed when the command ends, so
+write outputs into the repository (as `runs/lab/` above); `lab.sh run` warns about output paths under `/tmp`. Files
+that a `run` command creates in the repository are handed back to your user afterwards (files created in `shell`
+stay owned by root). The image carries the network tools but not PyTorch, so it runs the backend-level commands
 (`baseline`, `gen`, `vnet`, the smoke test); training and `serve` run on the host. `EDGEFDL_LAB_IMAGE` overrides the
 image name.
 
@@ -238,6 +243,9 @@ without LXD installed:
 python -m edgefdl.vnet.lxd configs/demo_topology.yaml --uplink ems=enp3s0
 ```
 
+The FRR configuration files are generated in a temporary directory that is removed afterwards; add
+`--stage-dir <directory>` to keep them for review.
+
 [Deployment](deployment.md#3-build-the-equivalent-network-and-train-the-model) explains when to use which backend.
 
 ## 7. Troubleshooting
@@ -248,10 +256,14 @@ python -m edgefdl.vnet.lxd configs/demo_topology.yaml --uplink ems=enp3s0
 | `curl` to `127.0.0.1` returns nothing or an error page from a proxy | `http_proxy` / `https_proxy` are set and curl sends local requests to the proxy. Use `curl --noproxy '*' …` or set `no_proxy=127.0.0.1,localhost` |
 | Webhook receiver gets nothing | The Webhook sink uses Python's `urllib`, which honours `http_proxy` and `no_proxy`. Add the receiver's host to `no_proxy` in the environment of `serve` |
 | `POST /api/inject` returns `{"error": "当前后端不允许注入故障"}` (HTTP 403) | `serve` was started with `--no-inject`, which disables fault injection |
+| A `POST` returns `{"error": "POST 请求须为 Content-Type: application/json"}` (HTTP 415) | Send the JSON body with `-H 'Content-Type: application/json'`, as in [section 3](#3-inject-a-fault-and-read-the-alarm) |
+| A request returns `{"error": "拒绝 Host 为 '…' 的请求：…"}` (HTTP 403) | The server listens on 127.0.0.1 and accepts only requests addressed to `localhost`, `127.0.0.1` or `::1`. Use one of these names (an SSH tunnel to any local port works); a reverse proxy must pass the upstream `Host` (`127.0.0.1:8460`, nginx's default). To serve other hosts directly, start `serve` with `--host <address>` ([Deployment, security](deployment.md#6-security)) |
+| `POST /api/inject` returns HTTP 400, for example `{"error": "loss 的 value 须大于 0 且不超过 1（丢包率），收到 5"}` | The value is outside the accepted range; the ranges and messages are listed in [api.md](api.md#post-apiinject-and-post-apiclear) |
+| `serve` stops at start with `edgefdl: --sinks 配置有误：Webhook 地址须为以 http:// 或 https:// 开头的完整 URL…` or another `--sinks 配置有误` message | `--sinks` is checked at start: a Webhook needs a complete `http://` or `https://` URL, a Syslog sink a `host` and a port from 1 to 65535, and only the types `webhook` and `syslog` exist ([Deployment, alarm sinks](deployment.md#alarm-sinks)) |
 | No alarm after injecting a fault | The value is below what the light probes detect (one-way loss below about 3%, bandwidth above about 70% of the baseline), or a route drift does not move any monitored path (and route drift applies to router–router links only). Wait longer for bandwidth faults. Use values in the trained ranges of [section 3](#3-inject-a-fault-and-read-the-alarm) |
 | `FileNotFoundError: …/configs/demo_topology.yaml` | EdgeFDL was installed with `pip install .` and run outside the checkout, so the default topology path does not exist. Run from the repository, install with `pip install -e .`, or pass `--topo` |
 | The PyTorch download is very large | The default Linux wheel includes CUDA. Install the CPU build first (section 1) |
-| `pipeline`, `robust` or `gen` uses too many CPUs | Lower `--workers` (sample generation, robustness jobs) and `--threads` (training) |
+| `pipeline`, `robust` or `gen` uses too many CPUs | Lower `--workers` (sample generation, robustness jobs) and `--threads` (training). Sample sets do not depend on `--workers` |
 | `scripts/lab.sh build` is slow or cannot reach the Debian mirror | Set `EDGEFDL_APT_MIRROR` to a reachable Debian mirror host, for example `EDGEFDL_APT_MIRROR=mirrors.example.org scripts/lab.sh build` |
 | `scripts/lab.sh` reports `permission denied` on the Docker socket | Add your user to the `docker` group (and log in again), or run it as a user who may start privileged containers |
 | `scripts/lab.sh smoke` reports a failed check (`[FAIL] …`) | The real-stack checks depend on packet timing inside the container; a heavily loaded host can delay OSPF convergence or probe packets. Re-run on an idle host; if a check keeps failing, open an issue with the full log (the `[FAIL]` line shows the measured value) |

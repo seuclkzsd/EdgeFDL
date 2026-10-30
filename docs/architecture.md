@@ -67,7 +67,7 @@ flowchart TD
 
 | Stage | What happens | Code | Output |
 |---|---|---|---|
-| Requirements intake | A YAML form lists devices, roles, sites and the EMS; interfaces, addresses, OSPF costs and speeds are extracted from Huawei VRP, H3C Comware or Cisco IOS configuration text and LLDP tables; missing interface names, point-to-point addresses and loopbacks are planned automatically. Topology images or PDFs can optionally be read by a locally hosted OpenAI-compatible multimodal model. | `intake/form.py`, `intake/extract.py`, `topology.py` | topology YAML |
+| Requirements intake | A YAML form lists devices, roles, sites and the EMS; interfaces, addresses, OSPF costs and speeds are extracted from Huawei VRP, H3C Comware or Cisco IOS configuration text and LLDP tables; missing interface names, point-to-point addresses and loopbacks are planned automatically. Topology images (PNG, JPEG; PDF pages converted to PNG first) can optionally be read by a locally hosted OpenAI-compatible multimodal model. Names, IDs and addresses are validated, and duplicates are refused. | `intake/form.py`, `intake/extract.py`, `topology.py` | topology YAML |
 | Topology model | Devices, links (bandwidth, one-way delay, jitter, loss, OSPF cost), deterministic OSPF shortest paths, the monitoring targets and the coverage plan (blind links get a device-native NQA / IP SLA probe target). | `topology.py` | `Topology` object |
 | Equivalent virtual network | Three interchangeable backends with the same interface and fault semantics: `sim` (analytic, millisecond samples), `netns` (Linux network namespaces, veth pairs, FRR OSPF, tc), `lxd` (one LXD container per device, one bridge per link, optional bridge to a physical port). | `vnet/` | measurements |
 | Normal baseline | Per-target RTT, RTT deviation, background loss and traceroute path; per-link bandwidth estimate and OSPF cost; per-link deep-probe RTT, deviation and capacity. | `faults/generator.py` (`learn_baseline`), `agent/features.py` (`Baseline`) | `baseline.json` |
@@ -138,31 +138,31 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 
 | Module | Responsibility |
 |---|---|
-| [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.0`) and the `python -m edgefdl` entry point. |
+| [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.1`) and the `python -m edgefdl` entry point. |
 | [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
-| [`edgefdl/topology.py`](../edgefdl/topology.py) | Topology data model (`Node`, `Link`, `Target`), automatic /30 and loopback planning, deterministic OSPF shortest paths, forward and return route of every target, monitoring targets and coverage planning. |
+| [`edgefdl/topology.py`](../edgefdl/topology.py) | Topology data model (`Node`, `Link`, `Target`), validation of names, IDs and addresses, automatic /30 and loopback planning, deterministic OSPF shortest paths, forward and return route of every target, monitoring targets and coverage planning. |
 | [`edgefdl/intake/form.py`](../edgefdl/intake/form.py) | Requirements form (YAML) plus device configurations and LLDP → topology; form template. |
-| [`edgefdl/intake/extract.py`](../edgefdl/intake/extract.py) | Parses Huawei VRP, H3C Comware and Cisco IOS configuration text (hostname, interfaces, addresses, OSPF cost, speed), pairs interfaces into links by shared subnet, reads LLDP CSV, optional extraction from images/PDF via an OpenAI-compatible multimodal endpoint. |
+| [`edgefdl/intake/extract.py`](../edgefdl/intake/extract.py) | Parses Huawei VRP, H3C Comware and Cisco IOS configuration text (hostname, interfaces, addresses, OSPF cost, speed), pairs interfaces into links by shared subnet, reads LLDP CSV, optional extraction from PNG / JPEG images via an OpenAI-compatible multimodal endpoint. |
 | [`edgefdl/vnet/base.py`](../edgefdl/vnet/base.py) | `Backend` interface (`up`, `down`, `inject`, `clear`, `measure_round`, `deep_probe`, `status`) and the backend factory. |
 | [`edgefdl/vnet/sim.py`](../edgefdl/vnet/sim.py) | Analytic simulator: OSPF routes, per-packet random delay, jitter and loss, packet-train estimates with multiplicative noise, LSDB view, transient interference, optional ICMP rate limiting. |
 | [`edgefdl/vnet/stack.py`](../edgefdl/vnet/stack.py) | Shared real-kernel backend for `netns` and `lxd`: L3 configuration, FRR or static routing, fault commands, concurrent ping / traceroute / packet-train / LSDB measurement rounds, deep probes, convergence wait, LSDB parsing. |
 | [`edgefdl/vnet/netns.py`](../edgefdl/vnet/netns.py) | Linux network-namespace backend: one namespace per device, one veth pair per link, one FRR instance per router. |
-| [`edgefdl/vnet/lxd.py`](../edgefdl/vnet/lxd.py) | LXD backend: one container per device, one bridge per link, optional macvlan / bridged uplink to a physical port; `python -m edgefdl.vnet.lxd` prints the full command sequence (dry run). |
+| [`edgefdl/vnet/lxd.py`](../edgefdl/vnet/lxd.py) | LXD backend: one container per device, one bridge per link, optional macvlan / bridged uplink to a physical port; `python -m edgefdl.vnet.lxd` prints the full command sequence (dry run), `--stage-dir` keeps the generated FRR files. |
 | [`edgefdl/vnet/frr.py`](../edgefdl/vnet/frr.py) | FRR configuration generator: single-area OSPF, point-to-point router links, hello 1 s / dead 4 s, host-facing interfaces and loopbacks passive. |
 | [`edgefdl/faults/model.py`](../edgefdl/faults/model.py) | Fault types, value ranges, labels, alarm categories and fault-space enumeration. |
 | [`edgefdl/faults/injector.py`](../edgefdl/faults/injector.py) | Translates a fault into apply / revert commands (`tc` netem + tbf, `ip link` / `ip addr`, `vtysh` OSPF cost); also the baseline queue configuration. |
 | [`edgefdl/faults/generator.py`](../edgefdl/faults/generator.py) | Baseline learning, fault-space filtering, trigger-aligned sample generation with domain randomization, multi-process generation, dataset writer. |
 | [`edgefdl/measure/model.py`](../edgefdl/measure/model.py) | Measurement records (`PingStat`, `LsdbEntry`, `RoundResult`, `DeepProbe`) and the `MeasurePlan` with its traffic budget. |
 | [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py) | Command builders and output parsers for ping, traceroute, iperf3 and packet trains; packet-train capacity estimator. |
-| [`edgefdl/measure/store.py`](../edgefdl/measure/store.py) | Measurement and alarm CSV logs with `schema_version` and `*.schema.json`, line flush, periodic fsync, size-based rotation. |
+| [`edgefdl/measure/store.py`](../edgefdl/measure/store.py) | Measurement and alarm CSV logs with `schema_version` and `*.schema.json`, line flush, periodic fsync, size-based rotation, protection of text cells against spreadsheet formula injection. |
 | [`edgefdl/agent/features.py`](../edgefdl/agent/features.py) | `Baseline`, `FeatureEncoder` (21 light, 6 deep and 8 global features), per-round anomaly test, direct-evidence checks, residual baseline (`ResidualRef`), per-alarm round evidence, RTT baseline tracking. |
 | [`edgefdl/agent/ddqn.py`](../edgefdl/agent/ddqn.py) | Q-network, dataset loader, action masks, reward, Double DQN + PER training, rollout, end-to-end evaluation, bundle save / load. |
-| [`edgefdl/agent/infer.py`](../edgefdl/agent/infer.py) | Online `Policy`: at most 4 forward passes per diagnosis, on-demand deep probes, link masking, direct-evidence gate, evidence text, latency statistics; NumPy inference engine. |
-| [`edgefdl/agent/knowledge.py`](../edgefdl/agent/knowledge.py) | Vendor command templates (Huawei VRP, H3C Comware, Linux/FRR) and rehearsal of remediation on the equivalent topology, for link faults and device-down. |
+| [`edgefdl/agent/infer.py`](../edgefdl/agent/infer.py) | Online `Policy`: at most 4 forward passes per diagnosis, on-demand deep probes, link masking, direct-evidence gate, evidence text, per-forward-pass latency statistics; NumPy forward pass (the bundle is still loaded with PyTorch). |
+| [`edgefdl/agent/knowledge.py`](../edgefdl/agent/knowledge.py) | Vendor command templates (Huawei VRP, H3C Comware, Linux/FRR) and rehearsal of remediation on the equivalent topology in its current state (other active alarms included), for link faults and device-down. |
 | [`edgefdl/core/denoise.py`](../edgefdl/core/denoise.py) | k-of-n detector with hysteresis, shared by sample generation and the online engine. |
 | [`edgefdl/core/orchestrator.py`](../edgefdl/core/orchestrator.py) | `Engine`: measurement loop, diagnosis scheduling, confirmation, alarms (concurrent or single), device-down aggregation, per-alarm clearing, baseline adaptation, snapshots. |
-| [`edgefdl/core/alarms.py`](../edgefdl/core/alarms.py) | Severity mapping and the Syslog (RFC 5424) and Webhook sinks. |
-| [`edgefdl/core/api.py`](../edgefdl/core/api.py) | HTTP server (standard library only): dashboard, REST endpoints, Prometheus metrics, CSV export, demo fault injection. |
+| [`edgefdl/core/alarms.py`](../edgefdl/core/alarms.py) | Severity mapping, the Syslog (RFC 5424) and Webhook sinks with their configuration check, and the JSON encoding without `NaN` used by the API, the Webhook and the alarm log. |
+| [`edgefdl/core/api.py`](../edgefdl/core/api.py) | HTTP server (standard library only): dashboard, REST endpoints, Prometheus metrics, CSV export, demo fault injection with input validation, checks against cross-site requests and DNS rebinding. |
 | [`edgefdl/core/web/index.html`](../edgefdl/core/web/index.html) | Single-page operations dashboard (Chinese UI). |
 | [`edgefdl/bench.py`](../edgefdl/bench.py) | Self-test: inference latency, long run under transient noise, measurement and compute overhead, online fault scenarios. |
 | [`edgefdl/robust.py`](../edgefdl/robust.py) | Robustness suite: harsher interference, missing measurements, ICMP rate limiting, background jitter, busy-hour drift, fault-size sweep, concurrent link faults and device-down cases. |
@@ -171,8 +171,11 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 Outside the package: [`scripts/lab.sh`](../scripts/lab.sh) and [`scripts/lab/Dockerfile`](../scripts/lab/Dockerfile)
 build a privileged Debian 12 container with FRR, iperf3, traceroute and iproute2;
 [`scripts/netns_smoke.py`](../scripts/netns_smoke.py) runs the real-protocol-stack smoke test in it;
-[`scripts/compare_robust.py`](../scripts/compare_robust.py) compares multi-alarm and single-alarm robustness
-runs seed by seed; [`tests/test_core.py`](../tests/test_core.py) holds the unit tests;
+[`scripts/sim_vs_stack.py`](../scripts/sim_vs_stack.py) compares the baseline RTT of every target on the real
+stack with the simulator; [`scripts/compare_robust.py`](../scripts/compare_robust.py) compares multi-alarm and
+single-alarm robustness runs seed by seed; [`tests/`](../tests/) holds the unit tests
+([`test_core.py`](../tests/test_core.py), [`test_engine.py`](../tests/test_engine.py),
+[`test_infra.py`](../tests/test_infra.py));
 [`tools/dev/spdx.py`](../tools/dev/spdx.py) checks license headers; [`configs/`](../configs/) holds the demo
 topology and a sample intake form with device configurations.
 
@@ -184,8 +187,10 @@ The topology YAML ([`configs/demo_topology.yaml`](../configs/demo_topology.yaml)
 the network. It lists `nodes` (`name`, `role` = router | switch | host | ems, `vendor`, `model`, `loopback`,
 `agent`, `site`), `links` (`id`, `a`, `b`, interface names, addresses, `bw` in Mbit/s, one-way `delay` and
 `jitter` in ms, `loss`, OSPF `cost`), the `vantage` (the EMS) and optional `ip_plan` pools. Empty interface
-names, /30 link addresses and router loopbacks are filled in automatically; `python -m edgefdl topo -o out.yaml`
-writes the completed plan.
+names, /30 link addresses and router loopbacks are filled in automatically, skipping values the file already uses;
+`python -m edgefdl topo -o out.yaml` writes the completed plan. Device names, link IDs, interface names and
+addresses are validated when the file is loaded, and duplicates are refused
+([deployment, describe the network](deployment.md#2-describe-the-network)).
 
 The demo topology has 12 devices (core, agg1, agg2, acc1–acc4 routers, hosts h1–h4, the EMS) and 15 links L1–L15
 at 1000 or 100 Mbit/s, with a mix of Huawei and H3C devices.
@@ -208,7 +213,8 @@ A single `torch.save` file, written by `train` and read by `serve`, `eval`, `ben
 
 Deploying a model therefore needs only this file: `serve --model model.pt` rebuilds the topology, the feature
 encoder, the detector and the measurement plan from it. `serve --learn-rounds N` replaces the bundled baseline
-with one learned on site. The bundle is a PyTorch pickle; load bundles only from sources you trust.
+with one learned on site. Bundles are loaded with `torch.load(..., weights_only=True)`, which accepts only tensors
+and basic Python types, so loading a bundle runs no code from it; deploy only bundles from sources you trust.
 
 ### Sample sets (`*.npz` + manifest)
 
@@ -228,7 +234,8 @@ with one learned on site. The bundle is a PyTorch pickle; load bundles only from
 The manifest has one row per sample with `sample_id`, `fault_type`, `fault_link`, `fault_value`,
 `transient_noise`, `detected` and `detect_rounds`, so every sample can be traced back to the injected fault.
 `gen --raw-csv` (single-process generation) also writes every measurement round in the measurement-log format,
-tagged with `sample_id` and `fault_label`.
+tagged with `sample_id` and `fault_label`. Sets are generated in chunks of 2,000 samples with their own seeds, so
+a seed gives the same set for any number of worker processes.
 
 ### Logs
 
@@ -270,8 +277,9 @@ The bundle carries the plan and baseline, so the deployed engine sees inputs dra
 agent was trained on.
 
 **Fail-safe loop.** Every round is wrapped in an exception handler that counts and logs errors and continues;
-HTTP handler errors return an error response without touching the loop; sinks never block it; logs are flushed
-per line. Inference is single-threaded with a keep-alive forward pass every round, so diagnosis latency stays
+HTTP handler errors return an error response without touching the loop; sinks never block it, and an alarm is
+registered before it is written and sent, so a failing log write or sink is counted without stopping the alarm;
+logs are flushed per line. Inference is single-threaded with a keep-alive forward pass every round, so diagnosis latency stays
 predictable. In the 72-hour-equivalent self-test (51,840 simulated rounds with transient noise) the engine
 recorded 0 errors (see [results.md](results.md)).
 

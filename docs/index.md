@@ -13,7 +13,7 @@ of the operators the project was built for; the pages translate the labels you w
 | You want to | Read, in this order |
 |---|---|
 | See it work (about 10 minutes, no network hardware) | [Quick start](quickstart.md) → [Results](results.md) |
-| Run it for your own network | [Quick start](quickstart.md) → [Deployment](deployment.md) → [REST API and integrations](api.md) |
+| Prepare it for your own network | [Quick start](quickstart.md) → [Deployment](deployment.md) → [REST API and integrations](api.md) |
 | Connect it to a monitoring or ticketing system | [REST API and integrations](api.md) → [Deployment, section 5](deployment.md#5-integrations) |
 | Understand how it works | [Architecture](architecture.md) → [Algorithms](algorithms.md) → [Results](results.md) |
 | Compare it with other tools | [Comparison](comparison.md) → [Results](results.md) |
@@ -25,8 +25,8 @@ of the operators the project was built for; the pages translate the labels you w
 | Page | Content |
 |---|---|
 | [Quick start](quickstart.md) | Install on Linux (CPU-only PyTorch is enough), start the dashboard with the bundled model, inject faults from the page and read the alarm, train a model with the pipeline, run the evaluation, self-test and robustness suite, the real-protocol-stack lab in Docker, troubleshooting |
-| [Deployment](deployment.md) | Running EdgeFDL for a specific network on an EMS: requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
-| [REST API and integrations](api.md) | Every HTTP endpoint with real example responses, the alarm object (including device-down alarms), Prometheus metrics, Syslog and Webhook formats, the CSV log schemas |
+| [Deployment](deployment.md) | Preparing EdgeFDL for a specific network on an EMS (in 0.1.1 `serve` measures the network's equivalent virtual network): requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
+| [REST API and integrations](api.md) | Every HTTP endpoint with real example responses and error messages, the cross-site request checks, the alarm object (including device-down alarms), Prometheus metrics, Syslog and Webhook formats, the CSV log schemas |
 
 ## How it works
 
@@ -39,12 +39,12 @@ of the operators the project was built for; the pages translate the labels you w
 
 | Page | Content |
 |---|---|
-| [Results](results.md) | Accuracy on the independent test set, the self-test (latency, overhead, 72-hour-equivalent run, 84 online scenarios), the robustness suite, multi-fault and device-down trials, fault-size sensitivity, the real-stack smoke test; each figure with its test conditions and source file |
+| [Results](results.md) | Accuracy on the independent test set, the self-test (latency, overhead, 72-hour-equivalent run, 84 online scenarios), the robustness suite, multi-fault and device-down trials, fault-size sensitivity, the real-stack smoke test and the simulator vs real-stack RTT comparison; each figure with its test conditions and source file |
 | [Comparison](comparison.md) | Capability-level comparison with general monitoring (Zabbix, Prometheus, Nightingale), network management and alarm correlation (LibreNMS, OpenNMS ALEC), active measurement (perfSONAR, SmokePing), configuration analysis (Batfish) and research approaches |
 | [`results/README.md`](../results/README.md) | What each file in `results/` contains and which command produced it |
 
-The demo video (Chinese narration, 6 min 19 s) is attached to the
-[v0.1.0 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0) as `EdgeFDL-demo-zh.mp4`. Dashboard
+The demo video (Chinese narration, 6 min 40 s) is attached to the
+[latest release](https://github.com/seuclkzsd/EdgeFDL/releases/latest) as `EdgeFDL-demo-zh.mp4`. Dashboard
 screenshots are in [`docs/media/`](media/).
 
 ## Project

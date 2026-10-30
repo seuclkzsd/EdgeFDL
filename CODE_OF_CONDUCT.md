@@ -39,7 +39,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at <https://github.com/seuclkzsd/EdgeFDL/security/advisories/new> (GitHub's private reporting channel, visible only to you and the maintainers listed in [MAINTAINERS.md](MAINTAINERS.md), currently @seuclkzsd; start the title with "Code of Conduct"), or through GitHub's "Report content" function on the specific comment, issue or pull request. Please do not report incidents in public discussions. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement, the maintainers listed in [MAINTAINERS.md](MAINTAINERS.md) (currently @seuclkzsd): open an issue titled "Code of Conduct contact request" that contains no details of the incident, and a maintainer replies within 7 days with a private channel for the report; or use GitHub's "Report content" function on the specific comment, issue or pull request. Please do not report incidents in public discussions. All complaints will be reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 

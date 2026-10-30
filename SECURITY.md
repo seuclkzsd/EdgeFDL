@@ -4,17 +4,23 @@
 
 | Version | Security fixes |
 |---|---|
-| 0.1.x (latest release) | Yes |
-| Earlier snapshots (before the first release) | No, please upgrade to 0.1.x |
+| 0.1.x | Yes, in the latest 0.1 patch release (currently 0.1.1); please upgrade from 0.1.0 |
+| Earlier snapshots (before the first release) | No, please upgrade to the latest 0.1.x |
 
 ## Reporting a vulnerability
 
 **Please do not disclose vulnerability details in public issues, pull requests or discussions.** Report them
-through GitHub's private vulnerability reporting:
+privately:
 
-<https://github.com/seuclkzsd/EdgeFDL/security/advisories/new>
-
-(Repository page, Security, Report a vulnerability. Only you and the maintainers can see the report.)
+1. **GitHub private vulnerability reporting**:
+   <https://github.com/seuclkzsd/EdgeFDL/security/advisories/new> (repository page, Security, Report a
+   vulnerability; only you and the maintainers can see the report). GitHub offers this form for public repositories
+   only; the maintainers switch it on when the repository is made public, and until then the link does not open a
+   form.
+2. **If the form is not available**, open an issue titled "Security contact request" that contains no details of the
+   problem, or use a contact method shown on the GitHub profile of the maintainer listed in
+   [MAINTAINERS.md](MAINTAINERS.md), <https://github.com/seuclkzsd>. The maintainer replies within 3 business days
+   with a private channel for the report.
 
 Please include, as far as you can:
 
@@ -48,35 +54,53 @@ adds authentication and TLS, or on a management network restricted by a firewall
 default on all three backends (`sim`, `netns`, `lxd`), and `--no-inject` disables both (they then answer HTTP 403).
 **Start every deployment that is connected to a real network, for example an `lxd` deployment with a bridged
 uplink, with `--no-inject`.** `GET /api/export/...` serves only `measure_log.csv` and `alarm_log.csv` from the
-log directory. In scope: requests that reach other files, execute code, change engine state without the inject
-endpoints, or stop the measurement loop.
+log directory.
 
-**Model bundles.** A model bundle (`model.pt`) is loaded with `torch.load(..., weights_only=False)`. **Loading a
-bundle unpickles it, and unpickling can execute arbitrary code.** Both inference engines (`--engine torch` and
-`--engine numpy`) read bundles this way. Load only bundles that you trained yourself or obtained from this
-repository or its GitHub Releases, and never load a bundle received from an untrusted party. Sample sets (`.npz`)
-are read with `numpy.load(..., allow_pickle=False)`. In scope: any way to make EdgeFDL load a bundle the operator
-did not choose. Not in scope: code execution from a bundle that the operator chose to load (documented behaviour).
+The server defends the browser of an operator against cross-site request forgery (CSRF) and DNS rebinding:
+`POST` requests must carry `Content-Type: application/json` (HTTP 415 otherwise), which browsers send cross-site
+only after a CORS preflight that the server does not answer; a `POST` whose `Origin` header differs from its `Host`
+header, including `Origin: null`, is refused with 403; while the server listens on a loopback address, it answers
+only requests whose `Host` names `localhost`, `127.0.0.1`, `::1` or the bound address (any port), so a page served
+from an attacker's domain that resolves to 127.0.0.1 gets 403. With `--host` set to a non-loopback address the
+`Host` check is off and the other checks remain. Request bodies are limited to 65,536 bytes, and fault values are
+validated ([docs/api.md](docs/api.md#post-apiinject-and-post-apiclear)). In scope: requests that reach other files,
+execute code, change engine state without the inject endpoints, stop the measurement loop, or get past these
+cross-site checks from a browser.
+
+**Model bundles.** A model bundle (`model.pt`) is loaded with `torch.load(..., weights_only=True)` (PyTorch 2.0 or
+newer), for both inference engines (`--engine torch` and `--engine numpy`). In this mode PyTorch restores only
+tensors and basic Python types; a bundle that contains other objects is refused with an error, so loading a bundle
+does not execute code from it. A bundle still determines the topology, the baseline and the weights the engine
+works with: deploy only bundles that you trained yourself or obtained from this repository or its GitHub Releases.
+Sample sets (`.npz`) are read with `numpy.load(..., allow_pickle=False)`. In scope: any bundle or sample set that
+executes code when loaded, and any way to make EdgeFDL load a bundle the operator did not choose.
 
 **Parsing of operator input.** Topology files and intake forms are read with `yaml.safe_load`; device
 configurations and LLDP neighbour tables (CSV) are parsed as text with regular expressions and the `csv` module;
-responses of the optional multimodal endpoint (`intake --llm`) are parsed as JSON only. In scope: inputs that
-cause code execution, unbounded memory or CPU use, or that silently produce a topology different from the file
-(for example a link attached to the wrong device).
+responses of the optional multimodal endpoint (`intake --llm`) are parsed as JSON only. When a topology is loaded,
+device names and link IDs are restricted to letters, digits, `_`, `.` and `-` (interface names also `/` and `:`),
+addresses and link values are checked, and duplicate names, IDs, interface names and addresses are refused. In
+scope: inputs that cause code execution, unbounded memory or CPU use, or that silently produce a topology different
+from the file (for example a link attached to the wrong device).
 
 **Command construction for `ip`, `tc`, `vtysh`, `lxc` and the probe tools.** All external commands are built as
 argument lists and run with `subprocess` without a shell, so topology fields are passed as single arguments and
 shell metacharacters are not interpreted. Device names, interface names and addresses from the topology also
 appear in FRR configuration files, in `vtysh -c` lines and in directory names (`/etc/frr/efl-<device>/`,
-`/var/run/frr/efl-<device>/` for `netns`; a staging directory and `lxc file push` for `lxd`). Treat topology and
-intake files as trusted operator input and review files received from others before running the `netns` or `lxd`
-backends, which run with root or LXD privileges. In scope: any topology field that leads to a command other than
-the documented ones, extra FRR or vtysh configuration lines, or files written outside these directories.
+`/var/run/frr/efl-<device>/` for `netns`; a temporary staging directory and `lxc file push` for `lxd`). Besides the
+validation above, the FRR configuration generator refuses fields that contain line breaks or control characters,
+the real-stack backends require valid Linux interface names, and the `lxd` backend requires valid LXD instance names
+and keeps its staging files inside the staging directory. Treat topology and intake files as trusted operator input
+and review files received from others before running the `netns` or `lxd` backends, which run with root or LXD
+privileges. In scope: any topology field that leads to a command other than the documented ones, extra FRR or vtysh
+configuration lines, or files written outside these directories.
 
 **CSV and log injection.** `measure_log.csv`, `alarm_log.csv`, Syslog messages and Webhook payloads contain device
-names, link identifiers and alarm text taken from the topology. CSV files are written with Python's `csv` module.
-In scope: fields that break the documented column schema, forge log records or Syslog fields, or are executed as
-formulas when the exported CSV is opened in a spreadsheet program.
+names, link identifiers and alarm text taken from the topology. CSV files are written with Python's `csv` module,
+and text cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return (and are not plain numbers) get a
+leading single quote, so that spreadsheet programs show them as text. In scope: fields that break the documented
+column schema, forge log records or Syslog fields, or are executed as formulas when the exported CSV is opened in a
+spreadsheet program.
 
 **Out of scope** (please use a public issue): wrong, missed or late alarms and accuracy differences (use the bug
 report template, or the field report template for real networks); the volume of the probe traffic of the
@@ -93,13 +117,14 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 
 - **Reads:** the files given on the command line: topology (`--topo`), intake form (`--form`), device
   configurations (`--configs`), LLDP table (`--lldp`), model bundle (`--model`), sample sets (`--data`), baseline
-  (`--baseline`); with `intake --llm`, the topology image or PDF to be extracted. When psutil is installed, the
-  process's own CPU and memory statistics.
+  (`--baseline`); with `intake --llm`, the topology images (PNG, JPEG) to be extracted. When psutil is installed,
+  the process's own CPU and memory statistics.
 - **Writes:** the log directory of `serve` (`--log-dir`, default `runs/live`): `measure_log.csv`, `alarm_log.csv`,
   their `*.schema.json` files and rotated archives (rotated at 200 MB); the output directories given with `--out`
   or `-o` to `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust` and `pipeline`. The `netns` backend
   writes FRR configuration and PID files under `/etc/frr/efl-<device>/` and `/var/run/frr/efl-<device>/`; the `lxd`
-  backend writes FRR files to a staging directory and pushes them into its containers.
+  backend writes FRR files to a temporary staging directory, pushes them into its containers and removes the
+  directory (`python -m edgefdl.vnet.lxd --stage-dir DIR` keeps them in `DIR` instead).
 - **Executes:** with the `sim` backend, no external programs. With `netns` or `lxd`: `ip`, `tc`, `sysctl` (only
   per-namespace keys), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train sender and receiver
   shipped in `edgefdl/measure/probes.py`, the FRR daemons `zebra` and `ospfd`, `vtysh`, and for `lxd` the `lxc`
@@ -110,7 +135,7 @@ configuration. Vendor commands in alarms are advice for the operator and are not
   bandwidth. It listens on the HTTP port of `serve`. It contacts other hosts only when the operator configures
   them: the Syslog (UDP) and Webhook (HTTP POST, sent with Python's `urllib`, which honours the standard proxy
   environment variables) sinks given with `--sinks`, and the OpenAI-compatible endpoint given with `intake --llm`,
-  which receives the base64-encoded image or PDF. There is no telemetry and no update check.
+  which receives the base64-encoded image. There is no telemetry and no update check.
 - **What logs contain:** timestamps, target IP addresses, device and link names, RTT, loss, jitter and bandwidth
   values, hop-by-hop paths, OSPF adjacency state and cost, and alarms with their evidence. Together they describe
   the topology and addressing of the network: handle them as internal network documentation, and replace names
@@ -125,4 +150,5 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 |---|---|
 | `sim` backend: training, evaluation, `bench`, `robust`, `serve` in simulation | An ordinary user; no root, no system service |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`) to create namespaces, configure `tc` and run FRR; `scripts/lab.sh` runs it inside a privileged container started with `--network none` |
-| `lxd` backend | A member of the `lxd` group; `--dry-run` only prints the command sequence |
+| `lxd` backend | A member of the `lxd` group |
+| `vnet up` / `vnet down` with `--dry-run` (`netns` or `lxd`) | An ordinary user: the command sequence is printed and nothing is executed (the `lxd` dry run generates the FRR files in a temporary directory and removes it). `python -m edgefdl.vnet.lxd` prints the complete LXD deployment sequence the same way |

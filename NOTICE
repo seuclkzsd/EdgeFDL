@@ -18,7 +18,7 @@ their own licenses.
 Python packages imported at run time (installed with pip from requirements.txt)
 ------------------------------------------------------------------------------
 NumPy (>= 1.19)                   BSD-3-Clause
-PyTorch (>= 1.10; CPU build is    BSD-3-Clause
+PyTorch (>= 2.0; CPU build is     BSD-3-Clause
   sufficient)
 PyYAML (>= 5.3)                   MIT
 psutil (>= 5.7), optional         BSD-3-Clause
@@ -26,8 +26,9 @@ psutil (>= 5.7), optional         BSD-3-Clause
                                       dashboard and /api/status and measured by `python -m edgefdl
                                       bench`; EdgeFDL runs without it.
 
-The published results were produced with Python 3.13 and PyTorch 2.9 (CPU). The HTTP server,
-REST API, Syslog and Webhook sinks use only the Python standard library.
+The published results were produced with Python 3.13 and PyTorch 2.9.1 (a CUDA 12.8 build, run
+on the CPU). The HTTP server, REST API, Syslog and Webhook sinks use only the Python standard
+library.
 
 
 External programs invoked as separate processes (not linked, not distributed)
@@ -45,8 +46,9 @@ iputils (ping)                    BSD-3-Clause for ping; the iputils package als
 traceroute                        GPL-2.0
 iperf3                            BSD-3-Clause
 procps (sysctl)                   GPL-2.0-or-later
-LXD (lxc command-line client)     Apache-2.0
-                                      `lxd` backend only.
+LXD (lxc command-line client)     AGPL-3.0-only since LXD 5.20 (Apache-2.0 up to LXD 5.19);
+                                      the LXD client SDKs remain Apache-2.0. Run as a separate
+                                      program by the `lxd` backend only.
 
 
 Development and test environment (not part of EdgeFDL, not distributed)

@@ -4,8 +4,8 @@ EdgeFDL's goal: an edge network with a single network-management server and a sm
 fault from one alarm that names the faulty link and the fault type, with evidence and vendor-specific commands,
 instead of from user complaints and hop-by-hop logins. The table below lists the plan by quarter with a
 **measurable criterion** for each item. At the end of every quarter the progress table is updated; unfinished items
-state the reason and are moved or dropped. Discussion and volunteering happen in the corresponding issues (label
-`roadmap`).
+state the reason and are moved or dropped. To discuss an item or volunteer for it, open a feature request that names
+the item.
 
 ## What 0.1 provides
 

@@ -59,7 +59,7 @@ records the reasons in the issue.
 | First response to a new issue | Within 7 days |
 | First review of a pull request | Within 14 days |
 | Acknowledgement of a security report | Within 3 business days ([SECURITY.md](SECURITY.md)) |
-| Response to a Code of Conduct report | Within 7 days ([CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)) |
+| First response to a Code of Conduct report (channels in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md#enforcement)) | Within 7 days |
 | Releases | At least one minor or patch release per month while there are user-visible changes |
 
 How well these targets are met (median time to first response for issues and pull requests) is recorded at the end of
@@ -72,7 +72,9 @@ each quarter in the progress table of [ROADMAP.md](ROADMAP.md).
   behaviour is kept as deprecated for one minor version. Changes that alter alarms or published numbers are listed
   separately in the release notes.
 - Before a release: CI passes; the version in `edgefdl/__init__.py` (read by `pyproject.toml`), `CITATION.cff` and
-  `CHANGELOG.md` agree; the model bundle and result files in `results/` were produced by the code being released.
+  `CHANGELOG.md` agree; the model bundle and result files in `results/` were produced by the code being released,
+  or come from an earlier release and the code being released reproduces them (evaluations, self-test and robustness
+  suite); the release notes say which.
 - Every release is tagged `vX.Y.Z` and published as a GitHub Release whose notes come from CHANGELOG.md.
 
 ## Succession

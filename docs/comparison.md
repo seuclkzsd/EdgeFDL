@@ -14,7 +14,7 @@ topology and the released model `results/model.pt`.
 
 | | General monitoring and alerting<br>Zabbix · Prometheus + Alertmanager · Nightingale | Network management and alarm correlation<br>LibreNMS · OpenNMS ALEC | Active performance measurement<br>perfSONAR · SmokePing | **EdgeFDL** |
 |---|---|---|---|---|
-| Data source | Monitored items: host agents, exporters, SNMP, ICMP checks | Device events and counters: SNMP polling, traps, syslog | End-to-end measurements between measurement hosts, or from one host to targets | Active probes from the single EMS (ping, traceroute, packet trains, on-demand deep probes) and the read-only OSPF LSDB |
+| Data source | Monitored items: host agents, exporters, SNMP, ICMP checks | Device events and counters: SNMP polling, traps, syslog | End-to-end measurements between measurement hosts, or from one host to targets | Active probes: pings and traceroutes from the single EMS; packet trains and on-demand deep probes between the two ends of a link; the read-only OSPF LSDB |
 | Deployment requirements | Agents on managed hosts, or SNMP access to devices | SNMP and syslog enabled on devices | perfSONAR needs a measurement host at each end of a measured path | Runs on the EMS, read-only towards devices: pings and traceroutes start at the EMS; packet-train bandwidth estimates and on-demand deep probes run between the two ends of a link; device-native NQA / IP SLA covers links that no EMS probe crosses |
 | Link down | Alert on the SNMP interface status; with ICMP checks only, the alert says which targets became unreachable | Interface status and traps report it directly; ALEC can group the resulting alarms by topology | The broken path is visible; the failed segment is found by hand | Names the failed link and both interfaces, and checks whether the backup path took over |
 | Performance degradation | Per-item threshold alerts; the faulty link is not inferred | Mainly reachability, interface traffic and error counters; link-level delay and jitter are not inferred | Path-level delay, loss and throughput; the link is located by comparing paths by hand | Recognises delay, loss, jitter and bandwidth degradation and names the link |
@@ -68,14 +68,16 @@ and a device outage is aggregated into one device-level alarm (60 of 60 trials).
 Thresholds, dependencies and correlation rules are normally tuned by experienced staff, and data-driven correlation
 needs a history of alarms from the production network. EdgeFDL builds an equivalent virtual network of the operator's
 topology, enumerates the fault space (231 fault primitives on the demo topology), generates trigger-aligned samples
-and trains a per-network model, so it can localize faults from the first day of operation.
+and trains a per-network model, so the model exists before the network has had its first fault. In release 0.1.1
+the online service measures that equivalent network; connecting it to the physical network is on the
+[roadmap](../ROADMAP.md).
 
 ### 4. Read-only, low overhead
 
 EdgeFDL never writes device configuration. Its light measurements start at the EMS; only the packet-train bandwidth
 estimate (3 links per round) and on-demand deep probes use a probe endpoint at a link end. On the demo topology the
 measurement traffic is 0.222% of the narrowest 100 Mbps link even if all of it crossed that link, computation takes
-0.0868% of one core, and one inference has a p99 of 0.575 ms, which fits a small EMS at the edge.
+0.0868% of one core, and one forward pass of the agent has a p99 of 0.575 ms, which fits a small EMS at the edge.
 
 ### 5. Closed-loop remediation with explainable conclusions
 
@@ -132,12 +134,13 @@ serve` provides three integration paths; [deployment.md](deployment.md) and [api
 | Webhook (HTTP POST, JSON) | For each raise, the alarm record: id, severity, fault type, link, endpoints with interfaces and addresses, confidence, evidence, repair steps; a shorter record for each clear (`event`: `raise` or `clear`) | An incident or on-call platform, chat-ops, custom automation |
 | Prometheus (`GET /metrics`) | `edgefdl_alarms_active`, one `edgefdl_alarm{id,type,link,severity}` series per active alarm, `edgefdl_link_health{link}`, totals, inference latency, probe bandwidth share | Prometheus + Alertmanager, Nightingale, VictoriaMetrics, Grafana, Zabbix (HTTP agent item with a Prometheus check) |
 
-Example: send alarms to a syslog collector and a webhook receiver, and listen on all interfaces so that a Prometheus
-server can scrape `/metrics` (addresses are documentation examples; `--no-inject` disables the demonstration
-fault-injection endpoints when the page is reachable by others):
+Example: send alarms to a syslog collector and a webhook receiver, and listen on the EMS's address in a management
+network that a firewall restricts, so that a Prometheus server there can scrape `/metrics` (addresses are
+documentation examples). The API has no authentication, so `--no-inject` disables the demonstration
+fault-injection endpoints while the page is reachable by others:
 
 ```bash
-python -m edgefdl serve --model results/model.pt --backend sim --host 0.0.0.0 \
+python -m edgefdl serve --model results/model.pt --backend sim --host 192.0.2.30 --no-inject \
     --sinks '[{"type":"syslog","host":"192.0.2.10"},{"type":"webhook","url":"http://192.0.2.20:8080/edgefdl"}]'
 ```
 

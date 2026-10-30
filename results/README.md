@@ -1,14 +1,15 @@
 # Published results
 
 This directory holds the released model bundle and the raw data behind every number in
-[`docs/results.md`](../docs/results.md), for EdgeFDL 0.1.0 on the demo topology
+[`docs/results.md`](../docs/results.md), on the demo topology
 [`configs/demo_topology.yaml`](../configs/demo_topology.yaml). The test conditions (simulation backend, simulated time,
-seeds, machine) are listed in [docs/results.md § Test conditions](../docs/results.md#test-conditions).
+seeds, machine, the EdgeFDL version that produced the files) are listed in
+[docs/results.md § Test conditions](../docs/results.md#test-conditions).
 
-The files were produced in one run directory (`runs/v6/`, git-ignored) and copied here unchanged; `robust.json` still
-records the model path of that run (`runs/v6/model.pt`), which is byte-identical to `results/model.pt`. Some keys,
-labels and both log formats are in Chinese, the language of the CLI and the dashboard; the
-[glossary](#glossary) below translates every one of them.
+The files of the training run were produced in one run directory (`runs/v6/`, git-ignored) and copied here
+unchanged; `robust.json` still records the model path of that run (`runs/v6/model.pt`), which is byte-identical to
+`results/model.pt`. Some keys, labels and both log formats are in Chinese, the language of the CLI and the
+dashboard; the [glossary](#glossary) below translates every one of them.
 
 ## Files
 
@@ -22,6 +23,7 @@ labels and both log formats are in Chinese, the language of the CLI and the dash
 | `baseline.json` | Normal baseline learned on the simulation backend (40 rounds, seed 1); the same baseline is embedded in `model.pt` | `baseline`, or the first step of `pipeline` |
 | `pipeline.log` | Console log (Chinese) of the run: baseline, sample generation, training progress, evaluation tables of both test sets | `pipeline` |
 | `smoke/run1.log` … `run3.log` | Console logs (Chinese) of three consecutive real-protocol-stack smoke tests, 26/26 checks each | `scripts/lab.sh smoke` |
+| `sim_vs_stack.json` | Per-target baseline RTT of the healthy demo network on the real protocol stack (`netns`, FRR OSPF, `tc`) and on the simulator, 30 rounds each | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out results/sim_vs_stack.json` |
 
 ## Commands
 
@@ -34,6 +36,7 @@ python -m edgefdl pipeline --out runs/v6 --workers 16 --no-bench
 python -m edgefdl bench  --model runs/v6/model.pt --out runs/v6/bench  --rounds 51840     # bench.json
 python -m edgefdl robust --model runs/v6/model.pt --out runs/v6/robust --workers 40       # robust.json
 mkdir -p runs/smoke && scripts/lab.sh build && scripts/lab.sh smoke | tee runs/smoke/run1.log   # smoke/run*.log
+scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json             # sim_vs_stack.json
 
 # Evaluation files from the released model
 python -m edgefdl baseline --rounds 40 --seed 1 -o runs/check/baseline.json
@@ -44,8 +47,11 @@ python -m edgefdl eval --model results/model.pt --data runs/check/test_rand.npz 
 ```
 
 Without `--no-bench`, `pipeline` also runs a 24-hour (17,280-round) self-test into `runs/v6/bench/`; the published
-`bench.json` is the separate 72-hour run. A re-trained model is not guaranteed to be bit-identical (multi-threaded CPU
-training), while baseline, sample generation and evaluation are deterministic for a given seed. Runtimes are listed in
+`bench.json` is the separate 72-hour run. Baseline, sample generation and evaluation are deterministic for a given
+seed, for any number of workers. Training is seeded as well (same training set, seed and thread count give the same
+model), but `model.pt` was trained with EdgeFDL 0.1.0, whose training was not fully seeded, so the training run
+produces a different model; the second block reproduces the evaluation files of the released one. The real-stack
+files vary slightly from run to run. Runtimes are listed in
 [docs/results.md § How to reproduce](../docs/results.md#5-how-to-reproduce).
 
 ## Reading the JSON files
@@ -114,7 +120,7 @@ Output of `python -m edgefdl robust` (`edgefdl/robust.py`). Condition names are 
 | `config` | `model` path, model `version`, `n` (offline samples per condition), `sweep_reps` (samples per link and value in the sweep), `rounds` (rounds per long run), `dual_n`, `node_reps`, `node_dual_reps`, `seed`, `base_noise` (per-round transient probability of the online runs), `engine` (engine overrides given with `--engine`; empty = defaults) |
 | `offline.<condition>` | Single-shot evaluation of fresh samples: `链路中断`, `性能劣化`, `路由漂移` = type + location accuracy of the link-down, performance-degradation and route-drift categories; `误报率` = false-alarm rate; `漏报率` = miss rate; `平均精测次数` = mean deep probes per sample; `n` |
 | `sweep[]` | Fault-size sensitivity: `type`, `value` (ms for delay and jitter per direction, loss rate, remaining bandwidth share), `n`, `detect_rate`, `type_acc`, `joint_acc` |
-| `online.long.<condition>` | 24-hour-equivalent run without faults: the `noise.*` keys of `bench.json`, plus `alarms` (false alarms counted by `"<link> <type>"`) and `wall_s` |
+| `online.long.<condition>` | 24-hour-equivalent run without faults: `rounds`, `sim_hours`, `detector_triggers`, `filtered_by_agent`, `false_alarms`, `false_alarms_per_day`, `false_alarm_exposure_pct` and `engine_errors` (as in `bench.json` `noise`), plus `alarms` (false alarms counted by `"<link> <type>"`) and `wall_s` |
 | `online.scen.<condition>` | The 84 online scenarios: `n`, `alarmed`, `joint_acc`, `wrong` (each error as `"<link> <true type> -> <alarm>"`), `mean_time_to_alarm_s`, `max_time_to_alarm_s`, `mean_time_to_clear_s`, `time_to_clear_by_type`, `not_cleared`, `extra_alarms`, `rows` (`[link, true type, alarm, time_to_alarm_s, time_to_clear_s, n_alarms]`) |
 | `online.dual`, `online.node`, `online.node_dual`, `online.single` | Multi-fault trials, each `{summary, rows, wall_s}` under one Chinese key (see below) |
 | `online.node_back` | Device-recovery trials, `{summary, rows, wall_s}` |
@@ -182,11 +188,26 @@ links on which route drift is in the action space) and `meta`: `version`, `creat
 
 ```python
 import torch
-ck = torch.load("results/model.pt", map_location="cpu", weights_only=False)
-print(ck["meta"]["version"], ck["dims"], len(ck["meta"]["topology"]["links"]))
+ck = torch.load("results/model.pt", map_location="cpu", weights_only=True)
+print(ck["meta"]["version"], ck["dims"], len(ck["meta"]["topology"]["links"]))   # ddqn-20261030-0116 [21, 6, 8, 15] 15
 ```
 
-The bundle is a Python pickle: load only bundles from sources you trust, as with any PyTorch checkpoint.
+The bundle contains only tensors and basic Python types (dictionaries, lists, strings, numbers), so it loads with
+`weights_only=True`, the mode in which PyTorch refuses any other object; EdgeFDL loads every bundle this way.
+
+### `sim_vs_stack.json`
+
+Output of [`scripts/sim_vs_stack.py`](../scripts/sim_vs_stack.py), run in the lab container.
+
+| Key | Meaning |
+|---|---|
+| `description` | What the file compares (English) |
+| `topology`, `topology_file`, `devices`, `links` | The topology measured |
+| `rounds`, `ping_count`, `ping_interval_s`, `sim_seed` | Rounds per backend, pings per target and round, their spacing in seconds, seed of the simulator |
+| `stack` | `routing` (`frr-ospf`), `ospf_convergence_s`, `kernel`, `frr` (version) of the real-stack run |
+| `created` | Time of the run |
+| `summary` | `targets`, `compared`, `max_abs_diff_ms`, `median_abs_diff_ms`, `mean_abs_diff_ms`, `p90_abs_diff_ms`, `worst_target`, `reachability_agree` (targets for which both backends agree on whether every round got a reply) and `reachability_agree_all` |
+| `per_target[]` | `id`, `ip`, `node`, `kind` (`if`, `host`, `lo`, `nqa`), `link`, `src` (probe source: the EMS, or the device that runs the NQA probe), `stack_rtt_ms` and `sim_rtt_ms` (median over rounds of the round's mean RTT, the estimate of `Baseline.fit`), `abs_diff_ms`, `stack_rounds_reachable`, `sim_rounds_reachable`, `reachability_agrees` |
 
 ## Glossary
 
@@ -238,7 +259,7 @@ conditions of the independent test set (transient probability 25% per round).
 
 | Key | English |
 |---|---|
-| `单轮推理时延 p99 (ms, 目标≤100)` | Single-round inference latency p99 (ms, target ≤ 100) |
+| `单轮推理时延 p99 (ms, 目标≤100)` | Inference latency p99 (ms, target ≤ 100), measured per forward pass as `latency.torch.forward_p99_ms` |
 | `完整研判时延 p99 (ms, 含特征与按需精测调用)` | Full diagnosis latency p99 (ms, including features and on-demand deep-probe calls) |
 | `模型参数量` | Model parameters |
 | `抗干扰长跑 72.0h 无效告警数` | False alarms in the 72.0-hour noise run |

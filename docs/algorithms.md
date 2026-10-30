@@ -1,6 +1,6 @@
 # Algorithms
 
-This page specifies the methods EdgeFDL uses, with the parameter values of release 0.1.0. Every value below is
+This page specifies the methods EdgeFDL uses, with the parameter values of release 0.1.1. Every value below is
 the default in the code; the file that holds it is named in each section. The component layout and data flow are
 in [architecture.md](architecture.md); measured accuracy, latency and robustness are in [results.md](results.md).
 
@@ -115,7 +115,10 @@ also falls under loss and jitter and would look like a bandwidth fault; the thro
 details. The two are cross-checked: when iperf3 reaches at least 85 % of the requested rate, the capacity cannot be
 below the measured throughput, so a lower train estimate (packet timing scrambled by jitter far larger than the
 per-packet service time) is discarded and the nominal bandwidth is used; when every train is unreliable and iperf3
-falls short of the requested rate, the throughput is the capacity.
+falls short of the requested rate, the throughput is the capacity. A quantity that a deep probe could not measure
+(the RTT when no reply came back, the bandwidth when the real-stack iperf3 run returned no result) is recorded as
+missing (`null` in the alarm evidence); for the agent's features a missing bandwidth counts as 0 when the probe got
+no reply and as the deep-probe baseline when it did, so it is no bandwidth evidence either way.
 
 ### 2.4 Traffic budget
 
@@ -405,8 +408,10 @@ P(i) = \frac{p_i^{\alpha}}{\sum_k p_k^{\alpha}}, \qquad w_i = \frac{\left(N\,P(i
 | probe cost | 0.05 | seed | 0 |
 
 The values are `AgentConfig` in [`agent/ddqn.py`](../edgefdl/agent/ddqn.py); the command line (`train`,
-`pipeline`) sets 15,000 iterations. The released model trained in about 4.4 minutes on CPU with 8 threads
-(2 × Intel Xeon Gold 6336Y, Python 3.13, PyTorch 2.9 CPU).
+`pipeline`) sets 15,000 iterations. Every random draw of training (weight initialisation, episode samples,
+exploration, ε decisions and prioritized-replay sampling) comes from generators seeded with `seed`, so the same
+training set, seed and number of threads give the same model. The released model trained in about 4.4 minutes on
+CPU with 8 threads (2 × Intel Xeon Gold 6336Y, Python 3.13, PyTorch 2.9.1, a CUDA 12.8 build run on the CPU).
 
 ### 7.5 Online inference
 
@@ -423,7 +428,11 @@ best one is kept and flagged as `evident = False`. This prevents cross-wiring, w
 fault and the link from another.
 
 Inference runs single-threaded. A NumPy implementation of the same forward pass is selected with
-`serve --engine numpy`. The engine runs one untimed keep-alive forward pass per round so the inference code stays
+`serve --engine numpy`; it replaces only the forward computation, and the bundle is still loaded with PyTorch, so
+PyTorch remains a requirement. A forward pass that returns a non-finite Q-value treats that action as masked; if no
+valid action is left, the diagnosis is "normal" with confidence 0. The latency statistics of the engine
+(`infer` in `/api/status`) count every forward pass, and an alarm's `infer_ms` is the slowest forward pass of its
+diagnosis. The engine runs one untimed keep-alive forward pass per round so the inference code stays
 resident in memory between the rare diagnoses. In the self-test one forward pass took 0.575 ms at the 99th
 percentile with PyTorch on one thread (mean 0.553 ms) and 0.302 ms with the NumPy engine; a complete diagnosis
 including feature computation took 2.512 ms at the 99th percentile (CPU as above).
@@ -514,9 +523,11 @@ learned on site (Section 10).
 | `test.npz` | 10,000 | 3 | standard | independent test (`results/eval_test.json`) |
 | `test_rand.npz` | 10,000 | 4 | randomized | test under training conditions (`results/eval_test_rand.json`) |
 
-The simulation backend generated the 60,000 training samples in 87.8 s with 16 processes
-([`results/pipeline.log`](../results/pipeline.log)). Evaluation is end to end: a fault on which the detector never
-triggers counts as missed, and an untriggered normal sample counts as a correct "normal".
+Each set is generated in chunks of 2,000 samples; chunk $k$ runs on its own simulated network with seed
+$100003 \cdot \text{seed} + k$, so a seed gives the same set whatever the number of worker processes, including a
+single process and `gen --raw-csv`. The simulation backend generated the 60,000 training samples in 87.8 s with 16
+processes ([`results/pipeline.log`](../results/pipeline.log)). Evaluation is end to end: a fault on which the
+detector never triggers counts as missed, and an untriggered normal sample counts as a correct "normal".
 
 ## 9. Online decision logic
 
@@ -744,18 +755,24 @@ filled with the alarm's devices, interfaces, addresses and costs:
 | device down | power, main board and fans, console login; neighbours' port and OSPF state; confirm adjacencies after recovery |
 
 **Rehearsal.** Before a temporary measure is recommended it is rehearsed on the equivalent topology, by recomputing
-routes with the OSPF shortest-path model that the simulator also uses:
+routes with the OSPF shortest-path model that the simulator also uses. The rehearsal starts from the current state
+of the network: the links of the other active alarms are down (a device-down alarm takes all links of the device),
+a drifted link keeps its current LSDB cost, and a detour over another alarmed, degraded link is flagged. The link's
+own interface addresses and its NQA probe go down or move with the link and are not counted; hosts behind it are.
 
 | Fault | Rehearsed measure | Feasible when |
 |---|---|---|
-| link down | rely on OSPF failover (the link removed) | no monitored target other than the link's own addresses becomes unreachable; targets without redundancy are listed |
-| delay, loss, jitter, bandwidth | raise the link's OSPF cost tenfold on both ends to steer traffic away | some targets move to a backup path and none still crosses the link |
-| route drift | restore the baseline cost | every monitored path equals its baseline path |
+| link down | rely on OSPF failover (the link removed) | no other monitored target becomes unreachable; targets without redundancy are listed, at most 8 by name (`无冗余、仍中断的目标: L11.h1`), so the host access links L11–L14 of the demo topology are infeasible. When no monitored path crosses the link (L3, L8, L9, L10), the detail names the path that still connects its two end devices (`两端设备经 agg1→core→agg2 互通`). A backup path over another alarmed, degraded link is noted |
+| delay, loss, jitter, bandwidth | raise the link's OSPF cost tenfold on both ends to steer traffic away | the monitored targets whose round trip crosses the link move to a backup path, none of them still crosses it, and no backup path crosses another alarmed, degraded link. When no monitored path crosses the link, the traffic between its two end devices is rehearsed instead (L3, L8, L9 and L10 are feasible, for example `两端设备间流量改走 acc3→agg2→acc4` for L9); when the targets that cross it have no backup path, as on host access links, it is infeasible and needs on-site work |
+| route drift | restore the baseline cost | the LSDB shows a cost different from the baseline, and restoring it makes no target unreachable. The detail compares the paths under the current cost with the paths after restoring: `N 个监测目标的路径随之回到基线` ("N monitored paths return to the baseline"; 6 for L4 at cost ×10, 8 for L6), or that the current cost moves no path. If the LSDB already shows the baseline cost, or no LSDB cost is known, the measure is infeasible and the path change needs manual checking |
 | device down | rely on OSPF to route around the device | no other target becomes unreachable |
 
-Only feasible measures are recommended: for a degradation, the cost-raise step with its vendor commands is added
-only when the rehearsal passes; otherwise the rehearsal result says why (for example, the link has no backup path
-and needs on-site work). The commands are for the operator; EdgeFDL does not execute them on devices.
+With other alarms active, the detail ends with `（已计入其他活动告警：L2 链路中断、…）` ("other active alarms taken
+into account"); for a degradation a detour over another degraded link makes the measure infeasible, for link down
+and device down it is a note. The advice of every active alarm is rehearsed again whenever the set of active alarms
+changes. Only feasible measures are recommended: for a degradation, the cost-raise step with its vendor commands is
+added only when the rehearsal passes; otherwise the rehearsal result says why (for example, the link has no backup
+path and needs on-site work). The commands are for the operator; EdgeFDL does not execute them on devices.
 
 ## 14. Limits of the methods
 

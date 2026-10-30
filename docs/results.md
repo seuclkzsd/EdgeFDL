@@ -1,6 +1,6 @@
 # Results
 
-This page reports every measured number for EdgeFDL 0.1.0 with its test conditions, defines the metrics, and gives
+This page reports every measured number for EdgeFDL with its test conditions, defines the metrics, and gives
 the command that reproduces each table. All numbers come from the files in [`results/`](../results/) (described in
 [`results/README.md`](../results/README.md)) and were produced with the released model bundle
 [`results/model.pt`](../results/model.pt).
@@ -25,7 +25,7 @@ the command that reproduces each table. All numbers come from the files in [`res
 | Overhead | Measurement traffic 0.222% of the narrowest 100 Mbps link (worst case); compute 0.0868% of one core; RSS 528.6 MB | [2](#2-self-test-latency-overhead-long-run-online-scenarios) |
 | Noise immunity | 72-hour-equivalent run with a transient in 15% of rounds: 214 detector triggers, 0 false alarms, 0 engine errors | [2](#2-self-test-latency-overhead-long-run-online-scenarios) |
 | Online scenarios | 84/84 correct alarms (type and link); mean time to alarm 37.9 s, mean time to clear after repair 19.3 s | [2](#2-self-test-latency-overhead-long-run-online-scenarios) |
-| Real protocol stack | Linux namespaces + FRR OSPF + tc: 26/26 checks in each of 3 runs | [3](#3-real-protocol-stack-smoke-test) |
+| Real protocol stack | Linux namespaces + FRR OSPF + tc: 26/26 checks in each of 3 runs; baseline RTT of all 37 targets within 0.74 ms of the simulator | [3](#3-real-protocol-stack-smoke-test) |
 | Harsh conditions | 16 long-run conditions of 24 h each: 0 false alarms in 12 of them, at most 9 in 24 h (transients lasting 15 s) | [4.1](#41-long-runs-and-scenarios-under-harsh-conditions) |
 | Concurrent faults | Two simultaneous link faults (300 trials): first alarm correct 100%, both reported 97.67%; device down (60 trials): one device-level alarm every time | [4.4](#44-multiple-faults) |
 
@@ -35,13 +35,13 @@ These conditions apply to every table on this page unless a section states other
 
 | Item | Value |
 |---|---|
-| Version | EdgeFDL 0.1.0; model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters) |
+| Version | Model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters), trained and measured with EdgeFDL 0.1.0. Release 0.1.1 reproduces the test-set evaluations and the baseline byte for byte, the self-test's long run and 84 scenarios with identical outcomes (latency, CPU and memory vary with the machine's load) and the robustness suite apart from its run time |
 | Topology | [`configs/demo_topology.yaml`](../configs/demo_topology.yaml): 12 devices (routers `core`, `agg1`, `agg2`, `acc1`–`acc4`; hosts `h1`–`h4`; the network-management server `ems`), 15 links L1–L15 (1000 and 100 Mbps), Huawei/H3C vendor mix |
 | Monitored targets | 37: 29 interface addresses (25 router interfaces, 4 host addresses), 7 router loopbacks, and 1 NQA target that coverage planning adds for the backup link L3, which no EMS-side probe crosses |
 | Measurement plan | One round every 5 s: 5 pings to every target, traceroute paths, packet-train bandwidth estimate on 3 links per round, OSPF LSDB; detection window of 6 rounds |
 | Backend | `sim`, the analytic simulator of the equivalent virtual network, for the independent test set, the self-test and the robustness suite. These run in **simulated time**: each 5 s round is computed without waiting, so "72 hours" means 51,840 rounds. The real protocol stack (`netns` backend) is exercised by the smoke test in section 3 |
 | Seeds | Baseline 1; training samples 1, validation samples 2, independent test set 3, domain-randomized test set 4; training 0; self-test 7; robustness 21 |
-| Machine | 2 × Intel Xeon Gold 6336Y (96 logical CPUs), Linux; Python 3.13; PyTorch 2.9 (CPU only) |
+| Machine | 2 × Intel Xeon Gold 6336Y (96 logical CPUs), Linux; Python 3.13.5; PyTorch 2.9.1, a CUDA 12.8 build run on the CPU (no GPU used) |
 | Training | 60,000 trigger-aligned, domain-randomized samples generated in 87.8 s with 16 processes; 15,000 iterations with 512 parallel episodes in about 4.4 minutes on 8 CPU threads |
 | Targets | The "Target" columns are EdgeFDL's design targets |
 
@@ -169,6 +169,14 @@ the four degradation steps; the baseline returns after clearing. OSPF converges 
 The measured probe traffic is about 290 KB per round (≈ 465 kbps), at most 0.47% of the narrowest 100 Mbps link even
 if all probe traffic crossed it. The smoke test sends 10 pings per target per round, twice the online default, so this
 is an upper estimate for the default plan.
+
+**Simulator against real stack.** [`scripts/sim_vs_stack.py`](../scripts/sim_vs_stack.py) measures 30 rounds of the
+healthy demo network on the `netns` backend (FRR OSPF, `tc` netem and tbf) and 30 rounds on the simulator with the same
+topology and measurement plan (5 pings per target, 0.2 s apart), and compares for each target the median of the
+per-round mean RTT, the estimate the baseline uses. All 37 targets are reachable in every round on both backends; the
+absolute RTT difference is at most 0.74 ms (target `L3.agg1`), with a median of 0.39 ms and a 90th percentile of
+0.52 ms (kernel 5.15, FRR 8.4.4, OSPF converged in 10.8 s). Raw data:
+[`results/sim_vs_stack.json`](../results/sim_vs_stack.json).
 
 ## 4. Robustness
 
@@ -341,19 +349,24 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Normal baseline | `python -m edgefdl baseline --rounds 40 --seed 1 -o runs/check/baseline.json` | identical to `results/baseline.json` | seconds |
 | Full pipeline: baseline, samples, training, evaluation, self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | `runs/v6/` with `baseline.json`, `train/val/test/test_rand.npz`, `model.pt`, `eval_test.json`, `eval_test_rand.json`, `bench/bench.json` | about 15 minutes |
 | Self-test (72-hour equivalent) | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | `runs/bench/bench.json` | about 5 minutes, single process |
-| Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | under 10 minutes with 40 workers |
+| Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
-| Unit tests | `python -m unittest discover -s tests` | 34 tests | seconds |
+| Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
+| Unit tests | `python -m unittest discover -s tests` | 71 tests | about 20 s |
 
 Notes:
 
-- Baseline learning, sample generation and evaluation are deterministic for a given seed, independent of the number
-  of workers; the first three rows were re-run with 8 workers and match the published files byte for byte.
+- Baseline learning, sample generation and evaluation are deterministic for a given seed. Sample sets are generated
+  in chunks with their own seeds, so they do not depend on the number of workers (one worker and `gen --raw-csv`
+  included); the first three rows were re-run with 8 workers and match the published files byte for byte.
 - `pipeline` runs its built-in self-test with 17,280 rounds (24 h) by default; the published `bench.json` uses the
-  separate 51,840-round run shown in the table (`pipeline --no-bench` skips the built-in one). A re-trained model uses
-  multi-threaded CPU kernels and is not guaranteed to be bit-identical to `results/model.pt`; evaluate the released
-  bundle to reproduce the published numbers exactly.
-- Latency, CPU share and RSS depend on the machine and the PyTorch build.
+  separate 51,840-round run shown in the table (`pipeline --no-bench` skips the built-in one).
+- Training draws all its random numbers from generators seeded with the configured seed, so the same training set,
+  seed and thread count give the same model. `results/model.pt` was trained with EdgeFDL 0.1.0, whose training left
+  weight initialisation, exploration and replay sampling unseeded, so `pipeline` trains a different model whose
+  figures differ from the published ones. Evaluate the released bundle to reproduce the published numbers exactly.
+- Latency, CPU share and RSS depend on the machine and the PyTorch build; the published RSS was measured with a
+  CUDA build of PyTorch, whose libraries make up most of it.
 - `robust` options: `--only online|offline`, `--kinds long,scen,dual,node,single,node_dual,node_back` to run a subset,
   `--seed` (or the environment variable `EDGEFDL_ROBUST_SEED`, default 21), `--single-alarm` for the one-alarm engine.
   `scripts/compare_robust.py` compares the pass criteria of two `robust.json` files, for example a concurrent-alarm run
@@ -372,6 +385,7 @@ Notes:
 | [`results/baseline.json`](../results/baseline.json) | Normal baseline learned on the virtual network |
 | [`results/pipeline.log`](../results/pipeline.log) | Console log of sample generation, training and evaluation |
 | [`results/smoke/`](../results/smoke/) | Section 3, three runs |
+| [`results/sim_vs_stack.json`](../results/sim_vs_stack.json) | Section 3, per-target RTT of the real stack and the simulator |
 
 The file formats and the JSON keys, including an English glossary of the Chinese keys and condition names, are
 documented in [`results/README.md`](../results/README.md).
@@ -384,10 +398,10 @@ documented in [`results/README.md`](../results/README.md).
 - The harsh conditions of section 4 (ICMP rate limiting, busy-hour drift, long transients) are modelled by us, not
   measured on production networks. The 72-hour figure is simulated time; a 72-hour real-time stress test is planned.
 - The light probes (5 packets per target per round) do not resolve one-way loss below about 3% or bandwidth still
-  above about 70% of the baseline (section 4.3). With 5% ICMP rate limiting, light loss on backup links with few
-  monitored paths is sometimes missed or mislocated; the scenario errors of section 4.1 are all loss faults under 5%
-  rate limiting, missed on the access links L8 and L10 (each crossed by a single monitored path) or attributed to a
-  neighbouring link.
+  above about 70% of the baseline (section 4.3). With routers dropping 5% of ICMP replies, some 15% loss faults of
+  the online scenarios are missed or attributed to a neighbouring link: the scenario errors of section 4.1 are all of
+  this kind, missed on the access-ring links L8 and L10 (each crossed by a single monitored path) or, once, reported
+  on L7 instead of L2.
 - Heavy loss (≥ 30%) makes real OSPF adjacencies flap; the simulator does not model this yet, which is why the smoke
   test uses 10% loss. Samples from the real stack will cover it.
 - Faults behind the management uplink L15 cannot be told apart from a fault of the uplink itself: when L15 is down the

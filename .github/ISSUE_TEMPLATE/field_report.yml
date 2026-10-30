@@ -3,7 +3,6 @@
 name: Report from a real network
 description: Tell us how EdgeFDL behaved on a network you operate, whether it was right or wrong
 title: "[Field] "
-labels: ["field-report"]
 body:
   - type: markdown
     attributes:

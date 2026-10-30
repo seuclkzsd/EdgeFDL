@@ -4,7 +4,8 @@
 other systems through Syslog, a Webhook, Prometheus metrics and CSV logs. This page is the reference for all of
 them. The examples are real responses, captured from `serve --backend sim --interval 1` with the released model while
 link L6 was down and link L1 had 20 ms of added delay (and, for the device-down examples, while all links of agg2
-were down). Long lists are abridged where marked.
+were down). Long lists are abridged where marked; alarm IDs and the rehearsal text are shown as release 0.1.1 writes
+them.
 
 - [Conventions](#conventions)
 - [Endpoints](#endpoints)
@@ -22,9 +23,24 @@ were down). Long lists are abridged where marked.
 - **Base URL.** `http://127.0.0.1:8460` by default (`serve --host`, `--port`). There is no authentication and no
   TLS; see [Deployment, security](deployment.md#6-security) before exposing the port.
 - **Format.** Responses are UTF-8 JSON (`application/json; charset=utf-8`) with `Cache-Control: no-store`, except
-  `/metrics` (Prometheus text format), the CSV downloads and the dashboard (`/`).
-- **Errors.** `{"error": "<message>"}` with status 400 (bad request body), 403 (fault injection disabled), 404
-  (unknown path or file) or 500 (unexpected error; the measurement loop is not affected).
+  `/metrics` (Prometheus text format), the CSV downloads and the dashboard (`/`). JSON never contains `NaN` or
+  `Infinity`: a value that was not measured, or is not finite, is `null`. The same holds for Webhook payloads and
+  the `evidence` column of `alarm_log.csv`.
+- **Errors.** `{"error": "<message>"}` with status 400 (bad request body or parameter), 403 (fault injection
+  disabled, or a request refused by the cross-site checks below), 404 (unknown path or file), 413 (request body
+  larger than 65,536 bytes), 415 (`POST` without `Content-Type: application/json`) or 500 (unexpected error; the
+  measurement loop is not affected).
+- **Cross-site checks.** The API has no authentication, so it refuses requests that a web page in an operator's
+  browser could forge. `POST` requests must carry `Content-Type: application/json` (parameters such as
+  `charset=utf-8` are allowed); otherwise 415 `{"error": "POST 请求须为 Content-Type: application/json"}`. A `POST`
+  with an `Origin` header must come from the same origin as the `Host` header (scheme `http` or `https`, equal host
+  and port, default ports 80 and 443); otherwise 403 `{"error": "拒绝跨站请求：Origin '<origin>' 与本服务地址不一致"}`,
+  also for `Origin: null`. Clients that send no `Origin`, such as `curl` and scripts, are not affected. While `serve`
+  listens on a loopback address (the default `--host 127.0.0.1`), every request must name `localhost`,
+  `127.0.0.1`, `::1` or the bound address in its `Host` header, with any port (so SSH tunnels to another local port
+  work); otherwise 403 `{"error": "拒绝 Host 为 '<host>' 的请求：服务监听回环地址，只接受经 localhost / 127.0.0.1 访问（防 DNS 重绑定；需从其他主机访问时用 --host 指定监听地址）"}`.
+  With `--host` set to any other address, including `0.0.0.0`, the `Host` header is not checked; the `Origin` and
+  content-type rules still apply. A reverse proxy must pass the upstream `Host` ([Deployment, security](deployment.md#6-security)).
 - **Language.** Identifiers and codes are English and stable: `fault_type`, `severity`, `event`, link and target
   IDs, field names. Display strings are Chinese: `fault_type_cn`, `category`, evidence items, remediation steps,
   event messages and detector reasons. Translations of the fixed labels are in [Codes and labels](#codes-and-labels).
@@ -32,8 +48,10 @@ were down). Long lists are abridged where marked.
   with milliseconds and `epoch` is Unix time.
 - **IDs.** Links are `L1`, `L2`, … as in the topology file. Targets are `<link>.<device>` for an interface address
   (`L6.agg2`), `lo.<device>` for a loopback and `nqa.<link>` for an NQA / IP SLA probe on a link that no EMS path
-  crosses. Alarm IDs are `A<7 digits>-<4-digit sequence>`; the 7 digits are derived from the start time and process
-  ID of the engine, so IDs from different runs do not collide.
+  crosses. Alarm IDs are `A<start time>-<instance>-<sequence>`, for example `A1793319160-3f9c1a-0001`: the Unix time
+  in seconds at which the engine started, 6 random hexadecimal digits drawn at start, and a 4-digit sequence number
+  counting the alarms of that run. Runs started in the same second get different instance digits, so IDs stay
+  unique across restarts and across engines writing to the same log directory.
 
 ## Endpoints
 
@@ -70,8 +88,8 @@ curl -s http://127.0.0.1:8460/api/status
       "带宽持续下降: L6"
     ]
   },
-  "active_alarm": { /* alarm A1916045-0001, see "The alarm object" */ },
-  "active_alarms": [ { /* A1916045-0001 */ }, { /* A1916045-0002 */ } ],
+  "active_alarm": { /* alarm A1793319160-3f9c1a-0001, see "The alarm object" */ },
+  "active_alarms": [ { /* A1793319160-3f9c1a-0001 */ }, { /* A1793319160-3f9c1a-0002 */ } ],
   "multi_alarm": true,
   "link_health": { "L1": 1.0, "L2": 0.0, "L6": 1.0 /* … one entry per link */ },
   "link_state": {
@@ -94,7 +112,7 @@ curl -s http://127.0.0.1:8460/api/status
   "alarms_total": 2,
   "events": [
     { "ts": 1793319253.721767, "round": 94, "kind": "alarm",
-      "msg": "告警 A1916045-0002：L1 时延劣化(RTT异常)（置信度 0.97），扣除已有告警后发现" },
+      "msg": "告警 A1793319160-3f9c1a-0002：L1 时延劣化(RTT异常)（置信度 0.97），扣除已有告警后发现" },
     { "ts": 1793319251.7178967, "round": 92, "kind": "pending",
       "msg": "扣除已有告警后仍疑似 L1 时延劣化(RTT异常)，等待复核" }
     /* … up to 30 events, newest first */
@@ -115,13 +133,13 @@ curl -s http://127.0.0.1:8460/api/status
 | `link_state` | Per link, OSPF adjacency up and cost from the last LSDB reading |
 | `unreachable` | Targets that answered no probe in the last round |
 | `ground_truth` | Faults currently injected through `/api/inject` (empty when none) |
-| `infer` | Inference time per diagnosis since start: count, mean, p99, maximum in ms (`{}` before the first diagnosis) |
+| `infer` | Time of one forward pass of the agent since start: count, mean, p99, maximum in ms (`{}` before the first diagnosis). A diagnosis runs 1 to 4 forward passes, each counted |
 | `overhead` | Probe traffic over the last up to 120 rounds: kbit/s, and as a percentage of the narrowest link and of the EMS uplink. The example ran at `--interval 1`, five times the default probe rate |
 | `resource` | Process CPU (percent of all CPUs), resident memory and total system memory in MB; `{}` without psutil |
 | `round_ms` | Mean wall time of a measurement round, ms |
-| `errors` | Exceptions caught and counted in the measurement loop |
+| `errors` | Exceptions caught and counted: in the measurement loop, failed writes to `alarm_log.csv`, alarm sinks that raised an error, and failures to build the remediation advice |
 | `suppressed` | Anomalies the agent judged normal (shown as 已过滤, filtered) |
-| `alarms_total` | Alarms raised since start |
+| `alarms_total` | Alarms raised since start (equal to the sequence number of the newest alarm) |
 | `events` | Last 30 events, newest first: `kind` is `pending` (suspected, awaiting confirmation), `alarm`, `clear` or `filtered` (dismissed as a transient or as a background-loss change); `filtered` events from the detector also carry `reason` |
 
 ## The alarm object
@@ -130,7 +148,7 @@ curl -s http://127.0.0.1:8460/api/status
 
 ```json
 {
-  "alarm_id": "A1916045-0001",
+  "alarm_id": "A1793319160-3f9c1a-0001",
   "event": "raise",
   "severity": "critical",
   "category": "链路中断",
@@ -174,7 +192,7 @@ curl -s http://127.0.0.1:8460/api/status
     "rehearsal": {
       "action": "依赖 OSPF 自动切换至备份路径",
       "feasible": true,
-      "detail": "7 个监测目标已切换到备份路径；业务无单点中断"
+      "detail": "7 个监测目标已切换到备份路径；备份路径经过同样告警中的 L1（时延劣化(RTT异常)）；业务无单点中断（已计入其他活动告警：L1 时延劣化(RTT异常)）"
     }
   },
   "ts": 1793319245.7239912,
@@ -192,7 +210,7 @@ and `endpoints` names the device and its model:
 
 ```jsonc
 {
-  "alarm_id": "A1933403-0001",
+  "alarm_id": "A1793319334-a41f07-0001",
   "event": "raise",
   "severity": "critical",
   "category": "链路中断",
@@ -248,17 +266,17 @@ and `endpoints` names the device and its model:
 | `evidence.items` | Human-readable evidence for the conclusion (Chinese) |
 | `evidence.trigger` | The detector reasons when the diagnosis ran |
 | `evidence.candidates` | The top 3 conclusions with their scores `q` (`type`, `link`) |
-| `evidence.probes` | Deep probes made for this diagnosis: `link`, `loss` (0–1), `rtt` and `mdev` (ms), `bw` (Mbit/s) |
+| `evidence.probes` | Deep probes made for this diagnosis: `link`, `loss` (0–1), `rtt` and `mdev` (ms), `bw` (Mbit/s); a value that was not measured is `null` (for example the RTT of a deep probe without replies) |
 | `repair` | The remediation steps joined with ` \| ` |
-| `probes_used`, `infer_ms` | Number of deep probes, inference time of the diagnosis (ms) |
+| `probes_used`, `infer_ms` | Number of deep probes; time of the slowest single forward pass of the diagnosis (ms) |
 | `round_id`, `first_round`, `last_round` | Round of the alarm, first round, last round the alarm was confirmed active |
 | `model` | Model version |
 | `advice.summary`, `advice.steps[].step`, `advice.steps[].cmds` | Summary and steps; commands are prefixed with the device in brackets and use the device's vendor syntax (Huawei VRP, H3C Comware or Linux / FRR) |
-| `advice.rehearsal` | The remediation rehearsed on the equivalent topology: `action`, `feasible`, `detail` (for example how many targets move to a backup path). Only feasible actions are recommended |
+| `advice.rehearsal` | The remediation rehearsed on the equivalent topology: `action`, `feasible`, `detail` (for example how many targets move to a backup path). Only feasible actions are recommended. The rehearsal runs on the current state of the network: links of the other active alarms count as down (a device-down alarm takes all its links), a drifted link keeps its current LSDB cost, and a detour over another alarmed, degraded link is reported; `detail` then ends with `（已计入其他活动告警：…）` ("other active alarms taken into account: …"). The advice and `repair` of the active alarms are recomputed when the set of alarms changes; this shows in the API and the dashboard, while `alarm_log.csv` and the sinks keep the text of the raise. If the advice cannot be built, the alarm is still raised with `advice` = `{"summary": "处置建议生成失败", "steps": [], "rehearsal": null}` and `errors` grows by 1 |
 | `ts` | Time of the alarm (Unix seconds) |
 | `ground_truth` | Labels of the faults injected when the alarm was raised (`sim` and `netns` backends), otherwise `null` |
 | `secondary` | `true` if the alarm was found on the residual after subtracting the alarms already active |
-| `evident` | `false` if the conclusion lacked direct evidence on its own link when raised; such an alarm is cleared only when the whole network recovers |
+| `evident` | `false` if the conclusion lacked direct evidence on its own link when raised. Such an alarm is not tracked round by round; it clears on network-wide recovery or, for link down, bandwidth, delay, loss and jitter, when a recheck deep probe, issued after 9 rounds (3 × `clear_n`) without evidence, finds no fault (`精测复核未见该故障，告警恢复`); it can also be cleared by a background-loss relearn or replaced |
 | `cleared_ts`, `cleared_round`, `cleared_why` | History entries only, once cleared: time, round and reason (Chinese, see [Codes and labels](#codes-and-labels)) |
 
 ## GET /api/alarms
@@ -268,7 +286,8 @@ curl -s 'http://127.0.0.1:8460/api/alarms?n=5'
 ```
 
 Returns a JSON array of [alarm objects](#the-alarm-object), newest first, active and cleared alike; `n` defaults to
-50 and the engine keeps the last 200 alarms in memory. The full record of every alarm since the log directory was
+50 and the engine keeps the last 200 alarms in memory. A value of `n` that is not a non-negative integer returns 400
+`{"error": "参数 n 须为非负整数"}`. The full record of every alarm since the log directory was
 created is in `alarm_log.csv`.
 
 ## GET /api/topology
@@ -337,7 +356,8 @@ two names are served; anything else returns 404. Rotated archives are read from 
 
 For demonstrations and tests on the virtual-network backends (`sim`, `netns`, `lxd`). `serve --no-inject` disables
 both endpoints: every POST then returns 403 `{"error": "当前后端不允许注入故障"}` ("this backend does not allow
-fault injection").
+fault injection"). The body is a JSON object sent with `Content-Type: application/json` (see
+[Conventions](#conventions)); a plain `curl -d` without that header gets 415.
 
 ```bash
 curl -s -X POST -H 'Content-Type: application/json' \
@@ -348,8 +368,10 @@ curl -s -X POST -H 'Content-Type: application/json' \
      -d '{"type": "delay", "link": "L1", "value": 20}' http://127.0.0.1:8460/api/inject
 # {"ok": true, "fault": {"type": "delay", "link": "L1", "value": 20.0}, "label": "L1 时延劣化(RTT异常) 20ms"}
 
-curl -s -X POST -d '{"link": "L6"}' http://127.0.0.1:8460/api/clear      # clear the fault on L6 only
-curl -s -X POST -d '{}' http://127.0.0.1:8460/api/clear                  # clear all injected faults
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{"link": "L6"}' http://127.0.0.1:8460/api/clear      # clear the fault on L6 only
+curl -s -X POST -H 'Content-Type: application/json' \
+     -d '{}' http://127.0.0.1:8460/api/clear                  # clear all injected faults
 # {"ok": true}
 ```
 
@@ -357,12 +379,40 @@ curl -s -X POST -d '{}' http://127.0.0.1:8460/api/clear                  # clear
 |---|---|
 | `type` | `link_down`, `delay`, `loss`, `jitter`, `bandwidth` or `route_drift` |
 | `link` | Link ID |
-| `value` | `delay`: added one-way delay in ms (applied at both ends, so the RTT rises by twice the value); `loss`: loss rate 0–1; `jitter`: ms; `bandwidth`: remaining fraction of the link bandwidth 0–1; `route_drift`: multiplier of the OSPF cost; ignored for `link_down`. Default 1.0 |
+| `value` | `delay`: added one-way delay in ms (applied at both ends, so the RTT rises by twice the value); `loss`: loss rate; `jitter`: ms; `bandwidth`: remaining fraction of the link bandwidth; `route_drift`: multiplier of the OSPF cost; ignored for `link_down` (stored as 1.0). A number, or a string holding a number such as `"20"`. Default 1.0 |
+
+Accepted values:
+
+| `type` | Accepted `value` |
+|---|---|
+| `delay`, `jitter` | greater than 0 and at most 10,000 (ms) |
+| `loss` | greater than 0 and at most 1 |
+| `bandwidth` | greater than 0 and at most 1 |
+| `route_drift` | greater than 0, and the new cost `max(1, round(cost × value))` at most 65,535 (for a link of cost 10, a multiplier of at most 6553) |
 
 One fault per link: injecting on a link that already has a fault replaces it; faults on different links coexist.
-Errors: an unknown type returns 400 `{"error": "未知故障类型 foo"}` ("unknown fault type foo"), an unknown link 400
-`{"error": "'L99'"}`. The model was trained on delay 5–100 ms, loss 0.05–0.9, jitter 5–50 ms, remaining bandwidth
-0.05–0.5 and cost multipliers 0.1, 0.3, 3, 10 and 30.
+The model was trained on delay 5–100 ms, loss 0.05–0.9, jitter 5–50 ms, remaining bandwidth 0.05–0.5 and cost
+multipliers 0.1, 0.3, 3, 10 and 30.
+
+`/api/clear` takes a JSON object; an absent, `null` or empty `link` clears every injected fault (an empty body is
+read as `{}`). Errors of both endpoints, all with status 400 unless noted:
+
+| Case | `error` |
+|---|---|
+| Body larger than 65,536 bytes | `请求体过大（上限 65536 字节）` (413) |
+| Invalid `Content-Length` | `Content-Length 不合法` |
+| Body is not JSON | `请求体不是合法的 JSON：<detail>` |
+| `NaN`, `Infinity` or `-Infinity` in the body | `请求体含 NaN，不是合法的 JSON 数值` (or `Infinity` / `-Infinity`) |
+| Body is not a JSON object | `请求体须为 JSON 对象` |
+| `type` or `link` missing (`/api/inject`) | `缺少字段 type`, `缺少字段 link` |
+| Unknown fault type | `未知故障类型 foo` |
+| Unknown link | `未知链路 L99` |
+| `value` is `true`, `false`, `null` or not a number | `value 须为数值，收到 <value>` |
+| `value` is not finite, for example `"nan"` or `1e400` | `value 须为有限数值，收到 <value>` |
+| `value` out of range | for example `delay 的 value 须大于 0 且不超过 10000ms，收到 -40`, `loss 的 value 须大于 0 且不超过 1（丢包率），收到 5`, `route_drift 的 value（开销倍率）须大于 0，且使 L1 的开销（基线 10）不超过 65535，即倍率不超过 6553，收到 1000000.0` |
+
+The checks run in this order: request size, `Host`, `--no-inject` (403), `Origin` (403), `Content-Type` (415), JSON
+syntax, then the fields.
 
 ## Prometheus metrics
 
@@ -388,8 +438,8 @@ edgefdl_filtered_total 0
 # TYPE edgefdl_round counter
 edgefdl_round 103
 # TYPE edgefdl_alarm gauge
-edgefdl_alarm{id="A1916045-0001",type="link_down",link="L6",severity="critical"} 1
-edgefdl_alarm{id="A1916045-0002",type="delay",link="L1",severity="minor"} 1
+edgefdl_alarm{id="A1793319160-3f9c1a-0001",type="link_down",link="L6",severity="critical"} 1
+edgefdl_alarm{id="A1793319160-3f9c1a-0002",type="delay",link="L1",severity="minor"} 1
 # TYPE edgefdl_infer_ms gauge
 edgefdl_infer_ms{q="p99"} 1.608
 # TYPE edgefdl_probe_bw_pct gauge
@@ -405,7 +455,7 @@ edgefdl_probe_bw_pct 1.11
 | `edgefdl_alarms_total` | counter | | Alarms raised since start |
 | `edgefdl_filtered_total` | counter | | Anomalies the agent judged normal |
 | `edgefdl_round` | counter | | Measurement rounds completed |
-| `edgefdl_infer_ms` | gauge | `q="p99"` | p99 inference time per diagnosis in ms (after the first diagnosis) |
+| `edgefdl_infer_ms` | gauge | `q="p99"` | p99 time of one forward pass of the agent in ms, as `infer.p99_ms` in `/api/status` (after the first diagnosis) |
 | `edgefdl_probe_bw_pct` | gauge | | Probe traffic as a percentage of the narrowest link (after the first round) |
 
 The output parses with the Prometheus text-format parser of `prometheus_client`. A scrape configuration is in
@@ -432,29 +482,32 @@ host name in these captured messages is replaced by `ems-host`):
 | STRUCTURED-DATA | `-` |
 | MSG | `<fault_type_cn> <link_id> <endpoints> conf=<confidence>` (UTF-8, Chinese fault label) |
 
-Configure the sink with `--sinks '[{"type": "syslog", "host": "10.0.0.5", "port": 514}]'` (`port` is optional).
+Configure the sink with `--sinks '[{"type": "syslog", "host": "10.0.0.5", "port": 514}]'` (`port` is optional, 1 to
+65535). The sink configuration is checked when `serve` starts ([Deployment, alarm sinks](deployment.md#alarm-sinks)).
 
 ## Webhook
 
 Each alarm `raise` and `clear` is POSTed as one JSON object (`Content-Type: application/json`, UTF-8) to the
 configured URL. Delivery runs in a background thread with a 3 s timeout and does not block the measurement loop;
-failed deliveries are not retried, so use `alarm_log.csv` as the authoritative record. A `raise` payload carries the
+a failed delivery is printed to standard error as `Webhook 投递失败（<url>）：<error>` and not retried, so use
+`alarm_log.csv` as the authoritative record. A `raise` payload carries the
 fields of `alarm_log.csv` (with `evidence` as a JSON object and without `ts`, `epoch` and `schema_version`), plus
 `node` and `links` for device-down alarms:
 
 ```json
-{"alarm_id": "A1933403-0001", "event": "raise", "severity": "critical", "category": "链路中断", "fault_type": "node_down", "fault_type_cn": "设备宕机", "link_id": "L2/L3/L6/L7", "node": "agg2", "links": ["L2", "L3", "L6", "L7"], "endpoints": "agg2（h3c MSR3620）", "site": "西区汇聚", "confidence": 0.876, "evidence": {"items": ["设备 agg2 与相邻路由设备的全部 4 条 OSPF 邻接（L2、L3、L6、L7）均已断开", "设备环回地址 10.255.0.3 不可达", "链路两端接口地址 10.10.0.9 / 10.10.0.10 均不可达", "OSPF 邻接 agg1↔agg2 断开"], "trigger": ["数据面持续异常: L2.core,L2.agg2,L3.agg1,L3.agg2,L6.agg2", "控制面变化: L2,L3,L6,L7", "带宽持续下降: L7"], "candidates": [{"type": "link_down", "link": "L3", "q": 0.751}, {"type": "link_down", "link": "L2", "q": 0.719}, {"type": "link_down", "link": "L7", "q": 0.694}], "probes": []}, "repair": "确认设备 agg2 供电、主控板与风扇状态，经 Console 登录查看是否重启或死机 | 在相邻设备上核对对端端口状态与 OSPF 邻居 | 设备恢复后确认全部邻接重建、路径回到基线", "probes_used": 0, "infer_ms": 0.562, "round_id": 39, "model": "ddqn-20261030-0116"}
+{"alarm_id": "A1793319334-a41f07-0001", "event": "raise", "severity": "critical", "category": "链路中断", "fault_type": "node_down", "fault_type_cn": "设备宕机", "link_id": "L2/L3/L6/L7", "node": "agg2", "links": ["L2", "L3", "L6", "L7"], "endpoints": "agg2（h3c MSR3620）", "site": "西区汇聚", "confidence": 0.876, "evidence": {"items": ["设备 agg2 与相邻路由设备的全部 4 条 OSPF 邻接（L2、L3、L6、L7）均已断开", "设备环回地址 10.255.0.3 不可达", "链路两端接口地址 10.10.0.9 / 10.10.0.10 均不可达", "OSPF 邻接 agg1↔agg2 断开"], "trigger": ["数据面持续异常: L2.core,L2.agg2,L3.agg1,L3.agg2,L6.agg2", "控制面变化: L2,L3,L6,L7", "带宽持续下降: L7"], "candidates": [{"type": "link_down", "link": "L3", "q": 0.751}, {"type": "link_down", "link": "L2", "q": 0.719}, {"type": "link_down", "link": "L7", "q": 0.694}], "probes": []}, "repair": "确认设备 agg2 供电、主控板与风扇状态，经 Console 登录查看是否重启或死机 | 在相邻设备上核对对端端口状态与 OSPF 邻居 | 设备恢复后确认全部邻接重建、路径回到基线", "probes_used": 0, "infer_ms": 0.562, "round_id": 39, "model": "ddqn-20261030-0116"}
 ```
 
 A `clear` payload identifies the alarm and puts the reason for clearing in `repair`:
 
 ```json
-{"alarm_id": "A1933403-0001", "severity": "critical", "category": "链路中断", "fault_type": "node_down", "fault_type_cn": "设备宕机", "link_id": "L2/L3/L6/L7", "endpoints": "agg2（h3c MSR3620）", "site": "西区汇聚", "confidence": 0.875, "model": "ddqn-20261030-0116", "event": "clear", "repair": "告警链路自身证据恢复至基线", "round_id": 58}
+{"alarm_id": "A1793319334-a41f07-0001", "severity": "critical", "category": "链路中断", "fault_type": "node_down", "fault_type_cn": "设备宕机", "link_id": "L2/L3/L6/L7", "endpoints": "agg2（h3c MSR3620）", "site": "西区汇聚", "confidence": 0.875, "model": "ddqn-20261030-0116", "event": "clear", "repair": "告警链路自身证据恢复至基线", "round_id": 58}
 ```
 
 The payloads carry no timestamp; use the time of receipt, or join on `alarm_id` with `alarm_log.csv`. Configure the
-sink with `--sinks '[{"type": "webhook", "url": "https://hooks.example.org/edgefdl"}]'`. The request goes through
-Python's `urllib`, which honours the `http_proxy`, `https_proxy` and `no_proxy` environment variables.
+sink with `--sinks '[{"type": "webhook", "url": "https://hooks.example.org/edgefdl"}]'`; the URL must start with
+`http://` or `https://` and name a host, or `serve` does not start. The request goes through Python's `urllib`,
+which honours the `http_proxy`, `https_proxy` and `no_proxy` environment variables.
 
 ## CSV logs
 
@@ -470,6 +523,10 @@ Rows are flushed line by line. The measurement log is fsynced every 5 s and the 
 rotated when it exceeds 200 MB (MiB) and renamed to `<name>.<YYYYmmddHHMMSSffffff>`; the 20 most recent archives are
 kept, so each log occupies at most about 4.1 GiB. An existing log is appended to when `serve` restarts, and the
 `*.schema.json` files are rewritten at every start.
+
+Text cells that a spreadsheet program would read as a formula (starting with `=`, `+`, `-`, `@`, a tab or a carriage
+return) are written with a leading single quote (`'`), so that the exported files open as text; numbers and text
+that is a plain number, such as `-1.5`, are written unchanged.
 
 ### measure_log.csv
 
@@ -508,21 +565,21 @@ One row per alarm `raise` and per `clear`:
 
 ```text
 schema_version,alarm_id,ts,epoch,event,severity,category,fault_type,fault_type_cn,link_id,endpoints,site,confidence,evidence,repair,probes_used,infer_ms,round_id,model
-1.0,A1916045-0001,2026-10-30T08:14:05.707,1793319245.707,raise,critical,链路中断,link_down,链路中断,L6,agg2:eth3(10.10.0.21) <-> acc3:eth1(10.10.0.22),三号楼/西区汇聚,0.977,"{""items"": [""链路两端接口地址 10.10.0.21 / 10.10.0.22 均不可达"", ""OSPF 邻接 agg2↔acc3 断开"", ""基线经过该链路的监测路径中 100% 已改道""], ""trigger"": [""数据面持续异常: L1.agg1,L3.agg1,L4.agg1,L4.acc1,L5.agg1"", ""控制面变化: L6""], ""candidates"": [{""type"": ""link_down"", ""link"": ""L6"", ""q"": 0.954}, {""type"": ""route_drift"", ""link"": ""L6"", ""q"": 0.425}, {""type"": ""bandwidth"", ""link"": ""L6"", ""q"": 0.366}], ""probes"": []}",查看两端端口物理/协议状态，确认是否 down 或被误 shutdown | 检查光模块收发光功率 / 网线，必要时更换跳线或光模块 | 如为误关闭，恢复端口 | 确认 OSPF 邻接恢复,0,0.986,86,ddqn-20261030-0116
-1.0,A1916045-0001,2026-10-30T08:14:51.713,1793319291.714,clear,critical,链路中断,link_down,链路中断,L6,agg2:eth3(10.10.0.21) <-> acc3:eth1(10.10.0.22),三号楼/西区汇聚,0.979,,告警链路自身证据恢复至基线,,,132,ddqn-20261030-0116
+1.0,A1793319160-3f9c1a-0001,2026-10-30T08:14:05.707,1793319245.707,raise,critical,链路中断,link_down,链路中断,L6,agg2:eth3(10.10.0.21) <-> acc3:eth1(10.10.0.22),三号楼/西区汇聚,0.977,"{""items"": [""链路两端接口地址 10.10.0.21 / 10.10.0.22 均不可达"", ""OSPF 邻接 agg2↔acc3 断开"", ""基线经过该链路的监测路径中 100% 已改道""], ""trigger"": [""数据面持续异常: L1.agg1,L3.agg1,L4.agg1,L4.acc1,L5.agg1"", ""控制面变化: L6""], ""candidates"": [{""type"": ""link_down"", ""link"": ""L6"", ""q"": 0.954}, {""type"": ""route_drift"", ""link"": ""L6"", ""q"": 0.425}, {""type"": ""bandwidth"", ""link"": ""L6"", ""q"": 0.366}], ""probes"": []}",查看两端端口物理/协议状态，确认是否 down 或被误 shutdown | 检查光模块收发光功率 / 网线，必要时更换跳线或光模块 | 如为误关闭，恢复端口 | 确认 OSPF 邻接恢复,0,0.986,86,ddqn-20261030-0116
+1.0,A1793319160-3f9c1a-0001,2026-10-30T08:14:51.713,1793319291.714,clear,critical,链路中断,link_down,链路中断,L6,agg2:eth3(10.10.0.21) <-> acc3:eth1(10.10.0.22),三号楼/西区汇聚,0.979,,告警链路自身证据恢复至基线,,,132,ddqn-20261030-0116
 ```
 
 | Column | Meaning |
 |---|---|
 | `schema_version`, `ts`, `epoch` | As in the measurement log |
 | `alarm_id` | Alarm ID; a `clear` row repeats the ID of the alarm it clears |
-| `event` | `raise` or `clear` (the schema file also reserves `update`, which v0.1.0 does not write) |
+| `event` | `raise` or `clear` (the schema file also reserves `update`, which release 0.1.1 does not write) |
 | `severity`, `category`, `fault_type`, `fault_type_cn` | As in the [alarm object](#the-alarm-object) |
 | `link_id`, `endpoints`, `site` | As in the alarm object (`/`-joined links and the device for `node_down`) |
 | `confidence` | Confidence 0–1 at the time of the row |
-| `evidence` | JSON text with `items`, `trigger`, `candidates`, `probes` (empty in `clear` rows) |
+| `evidence` | JSON text with `items`, `trigger`, `candidates`, `probes` (empty in `clear` rows); values that were not measured are `null` |
 | `repair` | `raise`: remediation steps joined with ` \| `; `clear`: the reason for clearing |
-| `probes_used`, `infer_ms` | Deep probes and inference time of the diagnosis (empty in `clear` rows) |
+| `probes_used`, `infer_ms` | Deep probes and the time of the slowest forward pass of the diagnosis (empty in `clear` rows) |
 | `round_id` | Round of the raise or the clear |
 | `model` | Model version |
 
