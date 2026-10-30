@@ -69,6 +69,10 @@ def router_conf(topo: Topology, node: str, hello_s: int = 1, dead_s: int = 4) ->
               # 虚拟网络里把 LSA 生成/接收节流压到 100ms 内（默认 5s/1s），故障样本生成时秒级收敛
               " timers throttle spf 0 50 500", " timers throttle lsa all 100",
               " timers lsa min-arrival 50", "!", ""]
+    # 拓扑字段若含换行会在配置里多出任意行（topology.from_dict 已校验；直接构造的 Topology 在此兜底）
+    bad = next((x for x in lines if any(c in x for c in "\r\n\0")), None)
+    if bad is not None:
+        raise ValueError(f"{node}: 拓扑字段含换行或控制字符，拒绝生成 FRR 配置: {bad!r}")
     return "\n".join(lines)
 
 

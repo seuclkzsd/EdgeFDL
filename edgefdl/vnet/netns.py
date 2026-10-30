@@ -50,7 +50,11 @@ class NetnsBackend(KernelStackBackend):
 
     def __init__(self, topo: Topology, plan: Optional[MeasurePlan] = None,
                  use_frr: Optional[bool] = None, prefix: str = PREFIX, dry_run: bool = False, **kw):
-        super().__init__(topo, plan, use_frr=frr_available() if use_frr is None else use_frr, **kw)
+        """dry_run：只记录命令序列（self.ex.log），不执行、不写文件、不动已有命名空间与 FRR 进程；
+        此时 use_frr 缺省按装有 FRR 处理（打印的是部署目标上的命令）。"""
+        if use_frr is None:
+            use_frr = True if dry_run else frr_available()
+        super().__init__(topo, plan, use_frr=use_frr, **kw)
         self.ex = NetnsExec(prefix, dry_run)
         self.prefix = prefix
 
@@ -73,7 +77,9 @@ class NetnsBackend(KernelStackBackend):
 
     def down(self) -> None:
         ex = self.ex
-        for pidf in glob.glob(f"/var/run/frr/{self.prefix}*/*.pid"):
+        if ex.dry_run:
+            ex.log.append(f"# 结束 FRR 守护进程：/var/run/frr/{self.prefix}*/*.pid 中的进程（SIGTERM）")
+        for pidf in ([] if ex.dry_run else glob.glob(f"/var/run/frr/{self.prefix}*/*.pid")):
             try:
                 with open(pidf) as f:
                     os.kill(int(f.read().strip()), signal.SIGTERM)
@@ -89,6 +95,8 @@ class NetnsBackend(KernelStackBackend):
         if not ex.dry_run:
             for d in glob.glob(f"/etc/frr/{self.prefix}*") + glob.glob(f"/var/run/frr/{self.prefix}*"):
                 shutil.rmtree(d, ignore_errors=True)
+        else:
+            ex.log.append(f"# 删除 /etc/frr/{self.prefix}* 与 /var/run/frr/{self.prefix}*")
         self.active.clear()
 
     def _start_frr(self) -> None:
@@ -103,11 +111,15 @@ class NetnsBackend(KernelStackBackend):
         for n in routers:
             ps = ex.ns(n)
             etc, run = f"/etc/frr/{ps}", f"/var/run/frr/{ps}"
-            if not ex.dry_run:
+            conf = frr.router_conf(self.topo, n, *self.ospf_timers)
+            if ex.dry_run:
+                ex.log.append(f"# 写入 {etc}/frr.conf（{len(conf.splitlines())} 行，frr.router_conf 生成）"
+                              f"与 {etc}/vtysh.conf，属主 {user}")
+            else:
                 os.makedirs(etc, exist_ok=True)
                 os.makedirs(run, exist_ok=True)
                 with open(f"{etc}/frr.conf", "w") as f:
-                    f.write(frr.router_conf(self.topo, n, *self.ospf_timers))
+                    f.write(conf)
                 with open(f"{etc}/vtysh.conf", "w") as f:
                     f.write(frr.VTYSH_CONF)
                 if user == "frr":

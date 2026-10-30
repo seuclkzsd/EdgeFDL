@@ -6,7 +6,9 @@
   - 设备配置 / 命令回显文本：华为 VRP、华三 Comware（display current-configuration），
     思科 IOS（show running-config）；自动识别 sysname/hostname；
   - LLDP 邻居表 CSV（local_device,local_if,remote_device,remote_if）；
-  - 拓扑图片 / 扫描件 / PDF：可选调用 OpenAI 兼容的多模态大模型（可本地部署），输出结构化 JSON。
+  - 拓扑图片 / 扫描件（PNG / JPEG）：可选调用 OpenAI 兼容的多模态大模型（可本地部署），输出结构化 JSON。
+    PDF 不直接发送（OpenAI 兼容接口的 image_url 只接受图片），需先逐页转成 PNG，如
+    `pdftoppm -png -r 150 拓扑.pdf 拓扑`。
 """
 from __future__ import annotations
 
@@ -125,12 +127,19 @@ LLM_PROMPT = (
     "看不清的字段留空，不要编造。")
 
 
+IMAGE_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+PDF_HINT = "PDF 需先逐页转成 PNG 再放入配置目录，如 pdftoppm -png -r 150 拓扑.pdf 拓扑"
+
+
 def llm_extract(path: str, endpoint: str, model: Optional[str] = None, timeout: float = 120) -> Dict:
-    """调用 OpenAI 兼容多模态接口（如本地 vLLM 部署的 Qwen2.5-VL）提取拓扑。"""
+    """调用 OpenAI 兼容多模态接口（如本地 vLLM 部署的 Qwen2.5-VL）从拓扑图片（PNG / JPEG）提取拓扑。"""
+    ext = os.path.splitext(path)[1].lower()
+    if ext not in IMAGE_MIME:
+        raise ValueError(f"{os.path.basename(path)}: 多模态接口只接受 PNG / JPEG 图片"
+                         + (f"；{PDF_HINT}" if ext == ".pdf" else ""))
     with open(path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
-    ext = os.path.splitext(path)[1].lower().lstrip(".") or "png"
-    mime = "application/pdf" if ext == "pdf" else f"image/{'jpeg' if ext == 'jpg' else ext}"
+    mime = IMAGE_MIME[ext]
     body = dict(model=model or os.environ.get("EDGEFDL_LLM_MODEL", "qwen2.5-vl"), temperature=0,
                 messages=[{"role": "user", "content": [
                     {"type": "text", "text": LLM_PROMPT},

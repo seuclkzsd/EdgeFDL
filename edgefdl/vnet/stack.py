@@ -23,7 +23,7 @@ from ..faults.injector import Cmd, apply_cmds, baseline_cmds, drift_cost, revert
 from ..faults.model import Fault
 from ..measure import probes
 from ..measure.model import NAN, DeepProbe, LsdbEntry, MeasurePlan, PingStat, RoundResult
-from ..topology import Link, Topology
+from ..topology import Link, Topology, check_linux_ifnames
 from . import frr
 from .base import Backend
 
@@ -135,6 +135,7 @@ class KernelStackBackend(Backend):
         """ospf_timers=(hello, dead) 秒。默认 1/4 求快速收敛；现网多为 10/40。两者 dead/hello 比相同，
         但时间尺度压缩 10 倍后，丢包引起的邻接抖动按墙钟计也会频繁 10 倍（见 docs 的实测表）。"""
         super().__init__(topo, plan)
+        check_linux_ifnames(topo)               # 接口名直接用于 ip link / tc / FRR，须是合法 Linux 接口名
         self.ospf_timers = ospf_timers
         self.ex: NodeExec = NodeExec()
         self.use_frr = use_frr

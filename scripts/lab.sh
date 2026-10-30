@@ -4,6 +4,9 @@
 # 实验容器管理：build | shell | smoke | run <cmd...>
 # 容器以 --privileged 运行（netns / tc / FRR 需要 CAP_NET_ADMIN 与 CAP_SYS_ADMIN），
 # 仓库挂载到 /work；宿主机无需 sudo，只需在 docker 组。
+# 容器带 --rm，只有仓库目录（/work）里的文件会保留：输出请写到仓库内，如
+#   scripts/lab.sh run python3 -m edgefdl baseline --backend netns -o runs/lab/baseline.json
+# run 结束后把容器（root）在仓库里新建的文件交还给宿主机当前用户。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMG=${EDGEFDL_LAB_IMAGE:-edgefdl-lab:latest}
@@ -14,6 +17,13 @@ case "${1:-shell}" in
            --build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" -t "$IMG" scripts/lab ;;
   shell) "${RUN[@]}" -it "$IMG" bash ;;
   smoke) shift; "${RUN[@]}" "$IMG" python3 scripts/netns_smoke.py "$@" ;;
-  run)   shift; "${RUN[@]}" "$IMG" "$@" ;;
+  run)   shift
+         for a in "$@"; do
+           case "$a" in /tmp/*|*=/tmp/*) echo "lab.sh: 注意 $a 在容器内的 /tmp，容器退出即删除；请写到仓库内（如 runs/lab/）" >&2 ;; esac
+         done
+         "${RUN[@]}" -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" "$IMG" bash -c \
+           'touch /tmp/.lab-t0; "$@"; rc=$?
+            find /work -xdev -user 0 -newer /tmp/.lab-t0 -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null
+            exit $rc' lab "$@" ;;
   *) echo "用法: $0 build|shell|smoke|run <cmd>"; exit 1 ;;
 esac

@@ -177,10 +177,12 @@ class SampleGenerator:
         return light, glob, deep, dict(noisy=any(noise), detected=detected, det_rounds=waited + self.settle)
 
     def generate(self, n: int, out: Optional[str] = None, raw_csv: Optional[str] = None, log_every: int = 2000,
-                 faults: Optional[List[Optional[Fault]]] = None, round0: int = 0) -> dict:
-        """生成 n 个样本；out 给定时写 npz 与样本清单 CSV（可追溯）。faults 给定时按清单逐个生成。"""
+                 faults: Optional[List[Optional[Fault]]] = None, round0: int = 0, raw=None) -> dict:
+        """生成 n 个样本；out 给定时写 npz 与样本清单 CSV（可追溯）。faults 给定时按清单逐个生成。
+        raw：已打开的 CsvStore（分块生成时多块共用一份逐轮原始测量日志，由调用方关闭）。"""
         from ..measure.store import CsvStore
-        raw = CsvStore(raw_csv, self.topo) if raw_csv else None
+        own = raw is None and bool(raw_csv)
+        raw = CsvStore(raw_csv, self.topo) if own else raw
         Ls, Gs, Ds, yt, yl, yv, nz, dt, dr, man = [], [], [], [], [], [], [], [], [], []
         todo = faults if faults is not None else [self.draw_fault() for _ in range(n)]
         t0 = time.time()
@@ -198,7 +200,7 @@ class SampleGenerator:
                         int(info["noisy"]), int(info["detected"]), info["det_rounds"]])
             if log_every and (i + 1) % log_every == 0:
                 print(f"  已生成 {i + 1}/{len(todo)} 个样本  {time.time() - t0:.1f}s", flush=True)
-        if raw:
+        if own:
             raw.close()
         data = dict(light=np.stack(Ls), glob=np.stack(Gs), deep=np.stack(Ds),
                     y_type=np.array(yt), y_link=np.array(yl), y_value=np.array(yv, dtype=np.float32),
@@ -225,7 +227,16 @@ def save_dataset(topo: Topology, enc: FeatureEncoder, drift_links, data: dict, o
                         drift_links=np.array([lidx[l] for l in drift_links], dtype=int))
 
 
-def _worker(args):
+CHUNK = 2000
+
+
+def chunks(n: int, seed: int, chunk: int = CHUNK):
+    """分块与各块种子：第 k 块（chunk 个样本，样本号从 k×chunk 起）用种子 seed×100003+k。
+    并行与顺序生成都按此分块，同一种子得到逐样本相同的数据集，与进程数无关。"""
+    return [(seed * 100003 + k, min(chunk, n - k * chunk), k * chunk) for k in range((n + chunk - 1) // chunk)]
+
+
+def _worker(args, raw=None):
     topo_dict, base_dict, plan, seed, n, round0, rand = args
     from ..topology import from_dict
     from ..vnet.sim import SimBackend
@@ -233,23 +244,52 @@ def _worker(args):
     b = SimBackend(topo, plan, seed=seed)
     b.up()
     g = SampleGenerator(topo, b, Baseline(**base_dict), plan, seed=seed, rand=rand)
-    return g.generate(n, log_every=0, round0=round0)
+    return g.generate(n, log_every=0, round0=round0, raw=raw)
+
+
+def _merge_save(topo: Topology, base: Baseline, parts: List[dict], out: Optional[str]) -> dict:
+    data = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
+    if out:
+        enc = FeatureEncoder(topo, base)
+        drift = sorted({f.link for f in fault_space(topo) if f.type == "route_drift"})
+        save_dataset(topo, enc, drift, data, out)
+    return data
 
 
 def generate_parallel(topo: Topology, base: Baseline, n: int, out: str, plan: Optional[MeasurePlan] = None,
-                      seed: int = 0, workers: int = 8, chunk: int = 2000, rand: bool = True) -> dict:
-    """仿真后端多进程并行生成（真实后端受限于实际测量耗时，用多套虚拟网络并行）。"""
+                      seed: int = 0, workers: int = 8, chunk: int = CHUNK, rand: bool = True,
+                      raw_csv: Optional[str] = None) -> dict:
+    """仿真后端分块生成：每块一套独立的仿真网络（种子见 chunks），workers>1 时多进程并行；
+    workers≤1 或要输出逐轮原始测量 CSV（raw_csv）时在本进程按块顺序生成，数据集与并行时相同。"""
     import multiprocessing as mp
     plan = plan or MeasurePlan()
-    jobs, k = [], 0
-    while k * chunk < n:
-        m = min(chunk, n - k * chunk)
-        jobs.append((topo.to_dict(), base.to_dict(), plan, seed * 100003 + k, m, k * chunk, rand))
-        k += 1
-    with mp.get_context("fork").Pool(min(workers, len(jobs))) as pool:
-        parts = pool.map(_worker, jobs)
-    data = {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
-    enc = FeatureEncoder(topo, base)
-    drift = sorted({f.link for f in fault_space(topo) if f.type == "route_drift"})
-    save_dataset(topo, enc, drift, data, out)
-    return data
+    jobs = [(topo.to_dict(), base.to_dict(), plan, s, m, r0, rand) for s, m, r0 in chunks(n, seed, chunk)]
+    if workers > 1 and not raw_csv:
+        with mp.get_context("fork").Pool(min(workers, len(jobs))) as pool:
+            parts = pool.map(_worker, jobs)
+    else:
+        from ..measure.store import CsvStore
+        raw = CsvStore(raw_csv, topo) if raw_csv else None
+        try:
+            parts = []
+            for j in jobs:
+                parts.append(_worker(j, raw))
+                print(f"  已生成 {j[5] + j[4]}/{n} 个样本", flush=True)
+        finally:
+            if raw:
+                raw.close()
+    return _merge_save(topo, base, parts, out)
+
+
+def generate_on(backend, topo: Topology, base: Baseline, n: int, out: Optional[str], seed: int = 0,
+                chunk: int = CHUNK, rand: bool = True, raw_csv: Optional[str] = None) -> dict:
+    """在一套已启动的虚拟网络（netns / LXD）上按同样的分块与种子顺序生成。"""
+    from ..measure.store import CsvStore
+    raw = CsvStore(raw_csv, topo) if raw_csv else None
+    try:
+        parts = [SampleGenerator(topo, backend, base, seed=s, rand=rand).generate(m, round0=r0, raw=raw)
+                 for s, m, r0 in chunks(n, seed, chunk)]
+    finally:
+        if raw:
+            raw.close()
+    return _merge_save(topo, base, parts, out)

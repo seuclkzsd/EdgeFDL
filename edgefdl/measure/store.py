@@ -4,13 +4,16 @@
 
 - 固定列、带 schema_version，每行自包含（时间戳、轮次、源、目标 IP/设备/链路），可追溯、可二次解析；
 - 逐行 flush、定期 fsync，按大小滚动归档并限制保留份数，7×24 运行时不丢日志、不撑满磁盘；
-- 列定义同时输出到同目录的 *.schema.json，供其他网管系统对接。
+- 列定义同时输出到同目录的 *.schema.json，供其他网管系统对接；
+- 防公式注入（OWASP CSV Injection）：以 = + - @ 制表符、回车开头的文本单元格前加单引号，
+  电子表格软件打开导出文件时按文本显示、不当公式执行；数值列与形如 -1.5 的纯数字文本不受影响。
 """
 from __future__ import annotations
 
 import csv
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -70,6 +73,17 @@ ALARM_COLUMNS = [
 ]
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+_PLAIN_NUMBER = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
+
+
+def csv_safe(v):
+    """文本单元格若会被电子表格当公式解析，前加单引号；数字与纯数字文本原样返回。"""
+    if isinstance(v, str) and v.startswith(_FORMULA_START) and not _PLAIN_NUMBER.fullmatch(v):
+        return "'" + v
+    return v
+
+
 def _now():
     t = time.time()
     return t, datetime.fromtimestamp(t).isoformat(timespec="milliseconds")
@@ -102,14 +116,17 @@ class _RollingCsv:
         with self._lock:
             for r in rows:
                 r.setdefault("schema_version", SCHEMA_VERSION)
-                self.w.writerow(r)
+                self.w.writerow({k: csv_safe(v) for k, v in r.items()})
             self.f.flush()
             if time.time() - self._last_sync > self.fsync_every:
                 os.fsync(self.f.fileno())
                 self._last_sync = time.time()
             if self.f.tell() > self.max_bytes:
                 self.f.close()
-                os.rename(self.path, f"{self.path}.{datetime.now():%Y%m%d%H%M%S%f}")
+                ts = int(f"{datetime.now():%Y%m%d%H%M%S%f}")
+                while os.path.exists(f"{self.path}.{ts}"):     # 同一微秒内再次滚动：不覆盖已有归档
+                    ts += 1
+                os.rename(self.path, f"{self.path}.{ts}")
                 self._prune()
                 self._open()
 

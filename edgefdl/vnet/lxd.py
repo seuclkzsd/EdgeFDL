@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 from typing import Dict, List, Optional, Sequence
@@ -25,6 +26,7 @@ from . import frr
 from .stack import KernelStackBackend, NodeExec, _vtysh_c
 
 PREFIX = "efl-"
+CT_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]{0,61}[A-Za-z0-9]")    # LXD 实例名：主机名规则
 
 
 class LxdExec(NodeExec):
@@ -52,14 +54,22 @@ class LxdBackend(KernelStackBackend):
         """uplinks: {设备名: {"parent": "enp3s0", "nictype": "macvlan"|"bridged", "name": "up0",
                               "ip": "192.168.10.250/24", "routes": ["10.0.0.0/8 via 192.168.10.1"],
                               "ospf": None|"passive"|"active"}}"""
+        """dry_run=None：本机没有 lxc 命令时只生成命令序列。stage_dir：FRR 配置的暂存目录，
+        给定则保留供审阅；缺省用临时目录，推送（或 dry run 生成）完即删除。"""
         super().__init__(topo, plan, use_frr=use_frr, **kw)
         if dry_run is None:
             dry_run = shutil.which("lxc") is None
+        elif not dry_run and shutil.which("lxc") is None:
+            raise RuntimeError("未找到 lxc 命令：LXD 后端需要先安装 LXD（只看命令序列请用 dry run）")
         self.ex = LxdExec(prefix, dry_run)
         self.prefix, self.image, self.pool = prefix, image, pool
         self.profile = prefix + "node"
-        self.stage_dir = stage_dir or tempfile.mkdtemp(prefix="edgefdl-lxd-")
+        self.stage_dir = stage_dir
         self.uplinks = uplinks or {}
+        for n in topo.nodes:
+            if not CT_RE.fullmatch(self.ex.ct(n)):
+                raise ValueError(f"LXD 实例名 {self.ex.ct(n)} 不合法（字母开头，只含字母、数字、-，"
+                                 f"不以 - 结尾，≤63 字符），请修改设备名 {n}")
         for l in topo.links:
             if len(self.net(l.id)) > 15:
                 raise ValueError(f"LXD 网络名 {self.net(l.id)} 超过 15 字符，请缩短前缀或链路 id")
@@ -125,22 +135,30 @@ class LxdBackend(KernelStackBackend):
 
     def _push_frr(self) -> None:
         ex = self.ex
-        for n in self.routers():
-            d = os.path.join(self.stage_dir, n)
-            os.makedirs(d, exist_ok=True)
-            conf = frr.router_conf(self.topo, n, *self.ospf_timers)
-            for fn, text in (("frr.conf", conf), ("daemons", frr.DAEMONS), ("vtysh.conf", frr.VTYSH_CONF)):
-                with open(os.path.join(d, fn), "w") as f:
-                    f.write(text)
-                ex.host(["lxc", "file", "push", os.path.join(d, fn), f"{ex.ct(n)}/etc/frr/{fn}"],
-                        check=True)
-            ex.run(n, ["systemctl", "restart", "frr"], check=True)
-            u = self.uplinks.get(n)
-            if u and u.get("ospf") in ("passive", "active"):
-                lines = ["configure terminal", f"interface {u.get('name', 'up0')}", "ip ospf area 0"]
-                if u["ospf"] == "passive":
-                    lines.append("ip ospf passive")
-                ex.vtysh(n, lines, check=True)
+        stage = self.stage_dir or tempfile.mkdtemp(prefix="edgefdl-lxd-")
+        root = os.path.realpath(stage)
+        try:
+            for n in self.routers():
+                d = os.path.join(stage, n)
+                if os.path.dirname(os.path.realpath(d)) != root:     # 设备名不得把文件写出暂存目录
+                    raise ValueError(f"设备名 {n!r} 不能用作暂存目录名")
+                os.makedirs(d, exist_ok=True)
+                conf = frr.router_conf(self.topo, n, *self.ospf_timers)
+                for fn, text in (("frr.conf", conf), ("daemons", frr.DAEMONS), ("vtysh.conf", frr.VTYSH_CONF)):
+                    with open(os.path.join(d, fn), "w") as f:
+                        f.write(text)
+                    ex.host(["lxc", "file", "push", os.path.join(d, fn), f"{ex.ct(n)}/etc/frr/{fn}"],
+                            check=True)
+                ex.run(n, ["systemctl", "restart", "frr"], check=True)
+                u = self.uplinks.get(n)
+                if u and u.get("ospf") in ("passive", "active"):
+                    lines = ["configure terminal", f"interface {u.get('name', 'up0')}", "ip ospf area 0"]
+                    if u["ospf"] == "passive":
+                        lines.append("ip ospf passive")
+                    ex.vtysh(n, lines, check=True)
+        finally:
+            if not self.stage_dir:
+                shutil.rmtree(stage, ignore_errors=True)
 
     def down(self) -> None:
         ex = self.ex
@@ -168,13 +186,18 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     ap.add_argument("--uplink", action="append", default=[], metavar="设备=物理口",
                     help="把设备桥接到宿主物理口（macvlan），可多次指定")
     ap.add_argument("--image", default="edgefdl-node")
+    ap.add_argument("--stage-dir", help="把各路由器的 FRR 配置写到该目录供审阅（缺省写临时目录，结束即删除）")
     a = ap.parse_args(argv)
     topo = load(a.topology)
     ups = {}
     for s in a.uplink:
         n, parent = s.split("=", 1)
+        if n not in topo.nodes:
+            ap.error(f"--uplink {s}: 拓扑中没有设备 {n}")
         ups[n] = {"parent": parent, "nictype": "macvlan", "name": "up0"}
-    b = LxdBackend(topo, image=a.image, dry_run=True, uplinks=ups)
+    if a.stage_dir:
+        os.makedirs(a.stage_dir, exist_ok=True)
+    b = LxdBackend(topo, image=a.image, dry_run=True, uplinks=ups, stage_dir=a.stage_dir)
     q = lambda c: " ".join(shlex.quote(x) for x in c)  # noqa: E731
     print("# 1. 制作节点镜像（联网执行一次）")
     for c in b.image_commands():
@@ -183,7 +206,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     b.up()
     for c in b.commands():
         print(c)
-    print(f"\n# FRR 配置已生成到 {b.stage_dir}")
+    print(f"\n# FRR 配置已生成到 {b.stage_dir}" if b.stage_dir else
+          "\n# FRR 配置在临时目录生成后已删除；用 --stage-dir DIR 保留供审阅")
     b.ex.log.clear()
     lid = topo.links[0].id
     print(f"\n# 3. 故障注入示例：{lid} 时延 +20ms 与恢复")

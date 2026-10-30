@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import glob
 import os
+import sys
 from typing import Dict, List, Optional
 
 import yaml
 
 from ..topology import Topology, from_dict
-from .extract import links_from_subnets, llm_extract, parse_config, read_lldp
+from .extract import IMAGE_MIME, PDF_HINT, links_from_subnets, llm_extract, parse_config, read_lldp
 
 FORM_TEMPLATE = """# 边缘网络需求采集表（请按实际填写，未知项可留空）
 name: 某单位边缘网络
@@ -39,12 +40,21 @@ def build_topology(form_path: str, configs: Optional[str] = None, lldp: Optional
     if configs:
         for p in sorted(glob.glob(os.path.join(configs, "*"))):
             ext = os.path.splitext(p)[1].lower()
-            if ext in (".png", ".jpg", ".jpeg", ".pdf"):
-                if llm:
+            if ext == ".pdf":
+                print(f"警告：跳过 {p}：{PDF_HINT}", file=sys.stderr)
+                continue
+            if ext in IMAGE_MIME:
+                if not llm:
+                    print(f"提示：未指定 --llm，跳过拓扑图片 {p}", file=sys.stderr)
+                    continue
+                try:
                     got = llm_extract(p, llm)
-                    for n in got.get("nodes", []):
-                        nodes.setdefault(n["name"], n)
-                    links.extend(got.get("links", []))
+                except (OSError, ValueError, KeyError, IndexError) as e:   # 接口不可达/拒绝、返回格式不对
+                    print(f"警告：跳过 {p}：多模态接口提取失败（{type(e).__name__}: {e}）", file=sys.stderr)
+                    continue
+                for n in got.get("nodes", []):
+                    nodes.setdefault(n["name"], n)
+                links.extend(got.get("links", []))
                 continue
             with open(p, encoding="utf-8", errors="ignore") as f:
                 d = parse_config(f.read())

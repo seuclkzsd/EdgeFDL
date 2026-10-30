@@ -147,8 +147,10 @@ class Agent:
         self.F1, self.F2, self.G, self.L = F1, F2, G, L
         self.drift_links = list(int(x) for x in drift_links)
         self.device = device
-        self.net = QNet(F1, F2, G, self.cfg.hidden).to(device)
-        self.tgt = QNet(F1, F2, G, self.cfg.hidden).to(device)
+        with torch.random.fork_rng(devices=[]):      # 权重初始化按 cfg.seed 确定，且不扰动全局随机状态
+            torch.manual_seed(self.cfg.seed)
+            self.net = QNet(F1, F2, G, self.cfg.hidden).to(device)
+            self.tgt = QNet(F1, F2, G, self.cfg.hidden).to(device)
         self.tgt.load_state_dict(self.net.state_dict())
         self.base_mask = static_mask(L, self.drift_links, device)
 
@@ -179,9 +181,12 @@ class Agent:
 
     # ------------------------------------------------------------------ 训练
     def train(self, ds: Dataset, log_every: int = 1000, val: Optional[Dataset] = None) -> Dict:
+        """全部随机抽取（回合样本、探索动作、ε 判定、PER 采样）都用 cfg.seed 播种的生成器：
+        同一数据、同一种子、同一线程数下训练结果可复现（不同线程数下浮点累加顺序不同，不保证逐位一致）。"""
         cfg = self.cfg
         dev = self.device
         g = torch.Generator(device="cpu").manual_seed(cfg.seed)
+        gd = g if torch.device(dev).type == "cpu" else torch.Generator(device=dev).manual_seed(cfg.seed + 1)
         opt = torch.optim.Adam(self.net.parameters(), lr=cfg.lr)
         cap, L = cfg.replay, self.L
         R = dict(idx=torch.zeros(cap, dtype=torch.long, device=dev),
@@ -208,8 +213,8 @@ class Agent:
                 o = self.obs(ds, idx, probed, step)
                 q = self.net(*o)
                 greedy = q.argmax(-1)
-                rnd = torch.multinomial(o[-1].float(), 1, generator=None).squeeze(-1)
-                explore = torch.rand(E, device=dev) < eps
+                rnd = torch.multinomial(o[-1].float(), 1, generator=gd).squeeze(-1)
+                explore = torch.rand(E, device=dev, generator=gd) < eps
                 a = torch.where(explore, rnd, greedy)
                 r, done = self.reward(ds, idx, a)
                 l = a // K
@@ -237,7 +242,7 @@ class Agent:
                 continue
             beta = cfg.per_beta0 + (1 - cfg.per_beta0) * it / cfg.iters
             pa = prio[:size] ** cfg.per_alpha
-            j = torch.multinomial(pa, cfg.batch, replacement=True)
+            j = torch.multinomial(pa, cfg.batch, replacement=True, generator=gd)
             w = (size * pa[j] / pa.sum()) ** (-beta)
             w = w / w.max()
             o1 = self.obs(ds, R["idx"][j], R["pr"][j], R["st"][j])
@@ -359,7 +364,16 @@ class Agent:
 
     @classmethod
     def load(cls, path: str, device="cpu") -> "Agent":
-        ck = torch.load(path, map_location=device, weights_only=False)
+        """模型包只含张量与基本类型（dict/list/str/数值），按 weights_only=True 加载：文件不能借反序列化执行代码。"""
+        import pickle
+        try:
+            ck = torch.load(path, map_location=device, weights_only=True)
+        except pickle.UnpicklingError as e:
+            lines = [x.strip() for x in str(e).split("WeightsUnpickler error:")[-1].splitlines() if x.strip()]
+            why = next((x for x in lines if not x.startswith(("Weights only load failed", "Check the doc"))),
+                       lines[0] if lines else "")
+            raise ValueError(f"{path}: 拒绝加载：模型包只能含张量与基本类型（按 weights_only=True 安全加载，"
+                             f"需 torch>=2.0，当前 {torch.__version__}）：{why}") from None
         F1, F2, G, L = ck["dims"]
         ag = cls(F1, F2, G, L, ck["drift_links"], AgentConfig(**ck["cfg"]), device)
         ag.net.load_state_dict(ck["state"])
