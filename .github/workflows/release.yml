@@ -1,0 +1,117 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# Release on tags v*: check that the tag is v<edgefdl.__version__> and that CHANGELOG.md holds a
+# dated section for that version, run the license check, the unit tests and the end-to-end serve
+# check, build the sdist and the wheel, and publish a GitHub Release whose notes are that CHANGELOG
+# section, with the packages, the demo model bundle (results/model.pt as edgefdl-demo-model.pt), a
+# tarball of results/ and SHA256SUMS:
+#   git tag -a v0.1.0 -m "EdgeFDL 0.1.0" && git push origin v0.1.0
+# Started by hand (workflow_dispatch), the workflow is a dry run: the same checks and builds, the
+# release assets kept as a workflow artifact for 14 days, nothing published. Every step is a step
+# of tools/dev/ci.sh: `tools/dev/ci.sh release` prepares the same assets locally in build/release/.
+# A release that already exists (created by hand) keeps its notes; the workflow uploads (replaces)
+# its assets. Media too large for the repository are attached by hand, e.g. the demo video:
+#   gh release upload v0.1.0 EdgeFDL-demo-zh.mp4
+# Actions are pinned to commit SHAs, their release tag in the comment.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: checks + tests + packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHON: python
+      # Empty on a dry run: tools/dev/ci.sh then checks as if tagging v<edgefdl.__version__>.
+      RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Version (tag = edgefdl.__version__, dated CHANGELOG section)
+        id: version
+        run: tools/dev/ci.sh version
+
+      - name: Dependencies (CPU PyTorch, NumPy, PyYAML, psutil, build)
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy pyyaml psutil build
+
+      - name: License headers, unit tests, online system end to end
+        run: tools/dev/ci.sh licenses tests serve
+
+      - name: Packages and release assets (sdist, wheel, model bundle, results tarball, SHA256SUMS)
+        run: tools/dev/ci.sh release
+
+      - name: Keep the assets for the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: |
+            build/release/assets/
+            build/release/notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Get the assets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release
+
+      - name: Check the assets (SHA256SUMS)
+        working-directory: release/assets
+        run: sha256sum -c SHA256SUMS
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          assets=(release/assets/*)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists: replacing its assets, keeping its notes"
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            pre=()
+            case "$VERSION" in *[a-z]*) pre=(--prerelease) ;; esac   # e.g. 0.2.0rc1
+            gh release create "$TAG" "${assets[@]}" --verify-tag --title "EdgeFDL $VERSION" \
+              --notes-file release/notes.md ${pre[@]+"${pre[@]}"}
+          fi
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[] | "  " + .name)'

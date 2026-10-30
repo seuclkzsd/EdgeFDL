@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# Tests and end-to-end checks on every push to main and every pull request.
+#   test       Python 3.9 and 3.12: SPDX license headers, the unit tests, and the online system end
+#              to end (serve: a fault injected through the REST API must raise the right alarm, which
+#              must clear after the fault is cleared); on 3.12 also a short offline pipeline run
+#              (samples, training, evaluation, self-test) and the sdist/wheel build
+#   realstack  the netns backend on the real Linux protocol stack (FRR OSPF, tc) in a privileged
+#              Docker container: the 26 checks of scripts/netns_smoke.py
+# Every step is a step of tools/dev/ci.sh, which runs the same way on a developer machine (its header
+# lists the steps). Actions are pinned to commit SHAs, their release tag in the comment.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PYTHON: python
+      CI_TMP: ${{ github.workspace }}/build/ci
+      CI_WORKERS: "2"
+      CI_THREADS: "2"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python ${{ matrix.python }}
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # The CPU build of PyTorch is all EdgeFDL needs (training and inference run on the CPU).
+      - name: Dependencies (CPU PyTorch, NumPy, PyYAML, psutil)
+        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install numpy pyyaml psutil
+          python -c "import sys, torch, numpy; print(sys.version.split()[0], 'torch', torch.__version__, 'numpy', numpy.__version__)"
+
+      - name: License headers (SPDX)
+        run: tools/dev/ci.sh licenses
+
+      - name: Unit tests
+        run: tools/dev/ci.sh tests
+
+      - name: Online system end to end (serve, REST fault injection, alarm, recovery, /metrics)
+        run: tools/dev/ci.sh serve
+
+      - name: Offline pipeline, short run (baseline, samples, training, evaluation, self-test)
+        if: matrix.python == '3.12'
+        run: tools/dev/ci.sh pipeline
+
+      - name: Package build (sdist and wheel)
+        if: matrix.python == '3.12'
+        run: |
+          python -m pip install build
+          tools/dev/ci.sh dist
+
+      - name: Logs on failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-logs-python${{ matrix.python }}-${{ github.sha }}
+          path: |
+            build/ci/**/*.log
+            build/ci/**/*.json
+            build/ci/serve/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  realstack:
+    name: real protocol stack (netns + FRR OSPF + tc in Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The fault injector shapes every link with tc netem and tbf; on cloud kernels these qdiscs can
+      # live in a separate modules package.
+      - name: Kernel modules for tc (sch_netem, sch_tbf)
+        run: |
+          if ! sudo modprobe -a sch_netem sch_tbf; then
+            sudo apt-get update -q
+            sudo apt-get install -y -q "linux-modules-extra-$(uname -r)"
+            sudo modprobe -a sch_netem sch_tbf
+          fi
+
+      - name: Lab image and smoke test (scripts/lab.sh build && scripts/lab.sh smoke)
+        run: tools/dev/ci.sh realstack
