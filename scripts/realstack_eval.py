@@ -299,6 +299,8 @@ def cmd_run(a) -> None:
                                      plan=eng.plan.__dict__.copy(), ospf_hello_s=backend.ospf_timers[0],
                                      ospf_dead_s=backend.ospf_timers[1], baseline="learned" if a.learn_rounds else "bundle",
                                      learn_rounds=a.learn_rounds, max_rounds=a.max_rounds, seed=a.seed,
+                                     normal_rounds=a.normal_rounds, noise=a.noise, node_after=a.node_after,
+                                     dual_cases=a.dual, dual_after=a.dual_after, dual_repair=a.dual_repair,
                                      image=a.image, commit=a.commit, loadavg_start=os.getloadavg(),
                                      started=time.strftime("%Y-%m-%d %H:%M:%S %z")))
     stats: Dict = dict(rebuilds=0)
@@ -561,8 +563,7 @@ def cmd_merge(a) -> None:
     if not parts:
         raise SystemExit("没有找到 result.json")
     res = merge(parts)
-    if a.image:
-        res["conditions"]["image"] = a.image
+    res["conditions"].update(json.loads(a.conditions) if a.conditions else {})
     keep = [i for i, p in enumerate(parts) if p["conditions"]["baseline"] != "bundle"]
     parts, raw = [parts[i] for i in keep], [raw[i] for i in keep]
     res["summary"]["shard_check"] = shard_check(parts, [d for _, d in raw])
@@ -631,7 +632,7 @@ def main(argv=None):
     p.add_argument("dirs", nargs="+")
     p.add_argument("--out", default="results/realstack.json")
     p.add_argument("--raw", help="把原始 CSV 日志 gzip 到这个目录")
-    p.add_argument("--image", default="", help="记入结果的实验镜像名")
+    p.add_argument("--conditions", help='补记到 conditions 的 JSON，如 {"image": "edgefdl-lab-torch:latest"}')
     p.set_defaults(fn=cmd_merge)
     p = sp.add_parser("table", help="由结果 JSON 输出文档用的逐类型表")
     p.add_argument("json", nargs="?", default="results/realstack.json")

@@ -171,11 +171,13 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 Outside the package: [`scripts/lab.sh`](../scripts/lab.sh) and [`scripts/lab/Dockerfile`](../scripts/lab/Dockerfile)
 build a privileged Debian 12 container with FRR, iperf3, traceroute and iproute2;
 [`scripts/netns_smoke.py`](../scripts/netns_smoke.py) runs the real-protocol-stack smoke test in it;
+[`scripts/realstack_eval.py`](../scripts/realstack_eval.py) measures the accuracy of the online engine on it, one
+container per shard ([`scripts/realstack_run.sh`](../scripts/realstack_run.sh));
 [`scripts/sim_vs_stack.py`](../scripts/sim_vs_stack.py) compares the baseline RTT of every target on the real
 stack with the simulator; [`scripts/compare_robust.py`](../scripts/compare_robust.py) compares multi-alarm and
 single-alarm robustness runs seed by seed; [`tests/`](../tests/) holds the unit tests
 ([`test_core.py`](../tests/test_core.py), [`test_engine.py`](../tests/test_engine.py),
-[`test_infra.py`](../tests/test_infra.py));
+[`test_infra.py`](../tests/test_infra.py), [`test_realstack.py`](../tests/test_realstack.py));
 [`tools/dev/spdx.py`](../tools/dev/spdx.py) checks license headers; [`configs/`](../configs/) holds the demo
 topology and a sample intake form with device configurations.
 

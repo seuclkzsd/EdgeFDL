@@ -91,6 +91,24 @@ class TestSummary(unittest.TestCase):
         self.assertIn("| **All** | 2 | 1 | 1 | 1 (50.0%) |", t)
 
 
+class TestMerge(unittest.TestCase):
+    @staticmethod
+    def part(shard, baseline, rows):
+        cond = dict(baseline=baseline, plan=dict(interval_s=5.0, window=6), loadavg_start=[1.0, 1.0, 1.0],
+                    loadavg_end=[1.0, 1.0, 1.0], started="t", seed=21)
+        return dict(shard=shard, shards=2, sets=["single"], rows=rows, node=[], dual=[], normal=[], conditions=cond,
+                    stats=dict(rounds=10, engine_errors=0, target_rounds=370, path_unknown=0), run=f"a/shard{shard}")
+
+    def test_rows_are_sorted_and_the_bundled_baseline_is_separate(self):
+        rows = [row("L2", "delay"), row("L1", "jitter"), row("L1", "delay")]
+        res = R.merge([self.part(0, "learned", rows), self.part(1, "bundle", [row("L3", "loss", alarm=False)])])
+        self.assertEqual([(r["link"], r["type"]) for r in res["scenarios"]],
+                         [("L1", "delay"), ("L1", "jitter"), ("L2", "delay")])
+        self.assertEqual(res["summary"]["single"]["overall"]["n"], 3)
+        self.assertEqual(res["summary"]["single_bundle_baseline"]["overall"]["alarmed"], 0)
+        self.assertEqual(len(res["per_container"]), 1)
+
+
 class TestShardCheck(unittest.TestCase):
     def test_rtt_spread_between_shards(self):
         """只看无干扰时段（日志最后 rounds 轮）；更早的故障轮次不计入。"""
