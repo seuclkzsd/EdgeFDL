@@ -25,7 +25,7 @@ privately:
 Please include, as far as you can:
 
 - the affected version or commit (`python -m edgefdl --version`) and how EdgeFDL was installed;
-- the operating system, Python and PyTorch versions, and the backend in use (`sim`, `netns` or `lxd`);
+- the operating system, Python and PyTorch versions, and the backend in use (`sim`, `netns`, `lxd` or `live`);
 - a minimal reproduction: the command line, the HTTP request, or the input file (topology, intake form, device
   configuration, LLDP table, model bundle) that triggers the problem, with real addresses and names replaced;
 - the impact you observed: a command that should not have run, a file written outside the expected directories,
@@ -51,9 +51,10 @@ REST API. The following are security issues and should be reported privately.
 `127.0.0.1:8460` by default (`--host`, `--port`). Expose it beyond the local machine only behind a reverse proxy that
 adds authentication and TLS, or on a management network restricted by a firewall. `POST /api/inject` and
 `POST /api/clear` inject and clear faults in the equivalent virtual network for demonstrations. They are enabled by
-default on all three backends (`sim`, `netns`, `lxd`), and `--no-inject` disables both (they then answer HTTP 403).
-**Start every deployment that is connected to a real network, for example an `lxd` deployment with a bridged
-uplink, with `--no-inject`.** `GET /api/export/...` serves only `measure_log.csv` and `alarm_log.csv` from the
+default on the three virtual backends (`sim`, `netns`, `lxd`), and `--no-inject` disables both (they then answer HTTP
+403). The `live` backend, which measures a real network, always answers them with HTTP 403 and refuses injection
+itself. **Start every other deployment that is connected to a real network, for example an `lxd` deployment with a
+bridged uplink, with `--no-inject`.** `GET /api/export/...` serves only `measure_log.csv` and `alarm_log.csv` from the
 log directory.
 
 The server defends the browser of an operator against cross-site request forgery (CSRF) and DNS rebinding:
@@ -97,6 +98,14 @@ and review files received from others before running the `netns` or `lxd` backen
 privileges. In scope: any topology field that leads to a command other than the documented ones, extra FRR or vtysh
 configuration lines, or files written outside these directories.
 
+**The `live` backend.** It runs on the EMS with the privileges of the user that started it, creates nothing and changes
+nothing. Its executor refuses every command except `ping`, `traceroute`, `iperf3` and the two packet-train scripts of
+`edgefdl/measure/probes.py`. Two inputs are shell text on purpose and come only from the command line of `serve`,
+`baseline` or `preflight`, never from the HTTP API or a model bundle: `--lsdb-cmd` runs through `sh -c`, and each
+command prefix of the `--endpoints` file receives one shell command line. Give them a read-only account. In scope: any
+way to make the backend send something other than these probes, or to reach these two inputs from the API, a topology
+or a bundle.
+
 **CSV and log injection.** `measure_log.csv`, `alarm_log.csv`, Syslog messages and Webhook payloads contain device
 names, link identifiers and alarm text taken from the topology. CSV files are written with Python's `csv` module,
 and text cells that start with `=`, `+`, `-`, `@`, a tab or a carriage return (and are not plain numbers) get a
@@ -119,8 +128,8 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 
 - **Reads:** the files given on the command line: topology (`--topo`), intake form (`--form`), device
   configurations (`--configs`), LLDP table (`--lldp`), model bundle (`--model`), sample sets (`--data`), baseline
-  (`--baseline`); with `intake --llm`, the topology images (PNG, JPEG) to be extracted. When psutil is installed,
-  the process's own CPU and memory statistics.
+  (`--baseline`), probe endpoints (`--endpoints`); with `intake --llm`, the topology images (PNG, JPEG) to be
+  extracted. When psutil is installed, the process's own CPU and memory statistics.
 - **Writes:** the log directory of `serve` (`--log-dir`, default `runs/live`): `measure_log.csv`, `alarm_log.csv`,
   their `*.schema.json` files and rotated archives (rotated at 200 MB); the output directories given with `--out`
   or `-o` to `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust` and `pipeline`. The `netns` backend
@@ -130,7 +139,9 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 - **Executes:** with the `sim` backend, no external programs. With `netns` or `lxd`: `ip`, `tc`, `sysctl` (only
   per-namespace keys), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train sender and receiver
   shipped in `edgefdl/measure/probes.py`, the FRR daemons `zebra` and `ospfd`, `vtysh`, and for `lxd` the `lxc`
-  client (which runs `systemctl restart frr` inside the containers).
+  client (which runs `systemctl restart frr` inside the containers). With `live`: `ping` and `traceroute`; with
+  `--lsdb-cmd`, that command through `sh -c`; with `--endpoints`, the listed command prefixes around `ping`, `iperf3`
+  and the packet-train scripts.
 - **Network:** EdgeFDL sends only the measurement probes of its measurement plan to the targets of the configured
   topology: ICMP echo (5 packets per target per round), ICMP traceroute, short UDP packet trains, and, for a deep
   probe of a single link, 100 pings at 10 ms intervals plus a 1 s iperf3 run at no more than 30% of the link's
@@ -155,4 +166,5 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 | Container of [`compose.yaml`](compose.yaml) (`sim` backend) | None inside the container: UID 10001, read-only root file system, all capabilities dropped, `no-new-privileges`; it writes only to the `/data` volume and `/tmp`. Starting it needs access to Docker |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`) to create namespaces, configure `tc` and run FRR; `scripts/lab.sh` runs it inside a privileged container started with `--network none` |
 | `lxd` backend | A member of the `lxd` group |
+| `live` backend | An ordinary user that may run `ping` and `traceroute -I` (`CAP_NET_RAW` on `traceroute`, see [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network)) |
 | `vnet up` / `vnet down` with `--dry-run` (`netns` or `lxd`) | An ordinary user: the command sequence is printed and nothing is executed (the `lxd` dry run generates the FRR files in a temporary directory and removes it). `python -m edgefdl.vnet.lxd` prints the complete LXD deployment sequence the same way |

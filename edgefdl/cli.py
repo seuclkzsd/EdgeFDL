@@ -12,6 +12,7 @@
   robust  → 鲁棒性测试（强干扰、测量缺陷、故障幅度、背景波动、多故障）
   compare → 同台对比：同一测量流上的阈值告警、告警分组、布尔层析、NetBouncer 式回归、007 式投票
   serve   → 网管在线运行（测量 + 研判 + 告警 + Web 大屏）
+  preflight → 只读接入真实网络前的检查（--backend live 的前置步骤）
 pipeline 一键串起 baseline→gen→train→eval→bench。
 """
 from __future__ import annotations
@@ -41,6 +42,15 @@ def _backend(kind, topo, plan, args, auto_dry=False):
     kw = {}
     if kind == "sim":
         kw = dict(seed=getattr(args, "seed", 0), noise_prob=getattr(args, "noise", 0.0) or 0.0)
+    elif kind == "live":
+        from .vnet.live import load_endpoints
+        try:
+            kw = dict(lsdb_cmd=getattr(args, "lsdb_cmd", None),
+                      endpoints=load_endpoints(getattr(args, "endpoints", None)),
+                      infer_state=getattr(args, "infer_state", False),
+                      trace_per_round=getattr(args, "trace_per_round", None))
+        except (OSError, ValueError) as e:
+            raise SystemExit(f"edgefdl: --endpoints 有误：{e}")
     elif getattr(args, "dry_run", False):
         kw = dict(dry_run=True)
     elif kind == "lxd":
@@ -58,6 +68,20 @@ def load_bundle(model_path: str):
     base = Baseline(**meta["baseline"])
     plan = MeasurePlan(**meta.get("plan", {}))
     return ag, topo, base, plan, meta
+
+
+def _live_ready(b, args):
+    """live 后端开始测量前：有地址不应答时停下并列出；--skip-silent 时这些地址按缺测处理。"""
+    from .vnet.live import format_preflight, preflight
+    rep = preflight(b)
+    print(format_preflight(rep), flush=True)
+    silent = [s["id"] for s in rep["silent"]]
+    if silent and getattr(args, "skip_silent", False):
+        b.skip_targets(silent)
+        print(f"--skip-silent：{len(silent)} 个不应答的地址不再探测，按缺测处理", flush=True)
+        rep["problems"] = [p for p in rep["problems"] if "不应答" not in p]
+    if rep["problems"]:
+        raise SystemExit("edgefdl: 接入检查未通过；地址确实不回 ICMP 时可加 --skip-silent")
 
 
 def build_engine(model_path, backend_kind, log_dir, args, plan_override=None):
@@ -102,12 +126,28 @@ def cmd_intake(args):
     print(f"已生成拓扑: {args.out}")
 
 
+def cmd_preflight(args):
+    from .vnet.live import format_preflight, preflight
+    if args.model:
+        t = load_bundle(args.model)[1]
+    else:
+        t = topomod.load(args.topo)
+    rep = preflight(_backend("live", t, _plan(args), args), count=args.count)
+    print(format_preflight(rep))
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(rep, f, ensure_ascii=False, indent=1)
+    sys.exit(0 if rep["ok"] else 1)
+
+
 def cmd_baseline(args):
     from .faults.generator import learn_baseline
     t = topomod.load(args.topo)
     b = _backend(args.backend, t, _plan(args), args)
     b.up()
-    if hasattr(b, "wait_converged"):          # 真实协议栈：等 OSPF 收敛后再学习，避免把收敛前的不可达计入基线
+    if b.read_only:
+        _live_ready(b, args)
+    elif hasattr(b, "wait_converged"):        # 真实协议栈：等 OSPF 收敛后再学习，避免把收敛前的不可达计入基线
         print(f"OSPF 收敛用时 {b.wait_converged():.1f} s", flush=True)
     base = learn_baseline(b, rounds=args.rounds)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
@@ -194,19 +234,39 @@ def cmd_compare(args):
                 dual_n=args.dual, node_reps=args.node_reps, conds=args.conditions.split(",") if args.conditions else None)
 
 
+def _site_baseline(site, bundle):
+    """现场基线里缺测的目标（不回 ICMP、盲区 NQA）取模型包基线：只用于区分链路远近端，这些目标仍按缺测处理。"""
+    import numpy as np
+    miss = np.isnan(site.rtt)
+    site.rtt[miss], site.mdev[miss] = bundle.rtt[miss], bundle.mdev[miss]
+    site.paths = [p if p else q for p, q in zip(site.paths, bundle.paths)]
+    return site
+
+
 def cmd_serve(args):
     from .core.api import serve
+    if args.backend == "live" and not (args.learn_rounds or args.baseline):
+        raise SystemExit("edgefdl: live 后端须用现场基线：加 --learn-rounds（建议 ≥120）或 --baseline <文件>；"
+                         "模型包自带的基线来自等价虚拟网络，与现场时延不同")
     eng, topo, backend = build_engine(args.model, args.backend, args.log_dir, args,
                                       plan_override=lambda p: (setattr(p, "interval_s", args.interval) or p)
                                       if args.interval else p)
-    if args.learn_rounds:
+    if backend.read_only:
+        _live_ready(backend, args)
+    if args.baseline:
+        from .agent.features import Baseline
+        eng.set_baseline(_site_baseline(Baseline.load(args.baseline), eng.enc.base))
+    elif args.learn_rounds:
         from .faults.generator import learn_baseline
         if hasattr(backend, "wait_converged"):
             backend.wait_converged()
         print(f"上线基线学习：{args.learn_rounds} 轮（约 {args.learn_rounds * eng.plan.interval_s / 60:.0f} 分钟）…", flush=True)
-        eng.set_baseline(learn_baseline(backend, rounds=args.learn_rounds))
+        learned = learn_baseline(backend, rounds=args.learn_rounds)
+        eng.set_baseline(_site_baseline(learned, eng.enc.base) if backend.read_only else learned)
+    if backend.read_only:
+        backend.set_reference(eng.enc.base.paths)
     eng.start()
-    httpd = serve(eng, topo, args.host, args.port, allow_inject=not args.no_inject)
+    httpd = serve(eng, topo, args.host, args.port, allow_inject=not args.no_inject and not backend.read_only)
     print(f"边缘网管已启动：http://{args.host}:{args.port}  后端={backend.name}  日志={args.log_dir}", flush=True)
     try:
         httpd.serve_forever()
@@ -254,6 +314,17 @@ def cmd_pipeline(args):
         cmd_bench(ns(model=o("model.pt"), out=o("bench"), rounds=args.bench_rounds, no_scenarios=False, seed=7))
 
 
+def _live_args(p, skip: bool = True):
+    p.add_argument("--lsdb-cmd", help="live 后端：输出 FRR show ip ospf database router json 的 shell 命令；缺省时 LSDB 特征按缺测处理")
+    p.add_argument("--endpoints", help="live 后端：探测端点 YAML；缺省时带宽估计与精测按缺测处理")
+    p.add_argument("--infer-state", action="store_true",
+                   help="live 后端：没有 --lsdb-cmd 时由 ping 与 traceroute 推断链路中断和开销变化，填入 LSDB 特征")
+    p.add_argument("--trace-per-round", type=int,
+                   help="live 后端：每轮 traceroute 几个目标（轮转，默认每秒 1 个，适应设备的 ICMP 限速；0 表示全部）")
+    if skip:
+        p.add_argument("--skip-silent", action="store_true", help="live 后端：不应答的地址不再探测，按缺测处理（默认停止并列出）")
+
+
 def main(argv=None):
     from . import __version__
     ap = argparse.ArgumentParser(prog="edgefdl", description="边缘网络故障自主定位系统")
@@ -275,11 +346,22 @@ def main(argv=None):
 
     p = sp.add_parser("baseline", help="在虚拟网络学习正常基线")
     p.add_argument("--topo", default=DEFAULT_TOPO)
-    p.add_argument("--backend", default="sim", choices=["sim", "netns", "lxd"])
+    p.add_argument("--backend", default="sim", choices=["sim", "netns", "lxd", "live"])
     p.add_argument("--rounds", type=int, default=40)
     p.add_argument("--seed", type=int, default=1)
+    _live_args(p)
+    p.add_argument("--interval", type=float, help="测量周期 s（live 后端基线学习按此定速，默认 5s）")
     p.add_argument("-o", "--out", required=True)
     p.set_defaults(fn=cmd_baseline)
+
+    p = sp.add_parser("preflight", help="只读检查接入真实网络的条件：地址应答、traceroute、LSDB 命令、探测端点")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--model", help="模型包（取其中的拓扑）")
+    g.add_argument("--topo", help="拓扑文件")
+    p.add_argument("--count", type=int, default=3, help="每个地址 ping 几个包")
+    p.add_argument("--json", help="同时写出 JSON 报告")
+    _live_args(p, skip=False)
+    p.set_defaults(fn=cmd_preflight)
 
     p = sp.add_parser("gen", help="全量故障样本生成")
     p.add_argument("--topo", default=DEFAULT_TOPO)
@@ -350,7 +432,7 @@ def main(argv=None):
 
     p = sp.add_parser("serve", help="在线运行网管系统 + Web 大屏")
     p.add_argument("--model", required=True)
-    p.add_argument("--backend", default="sim", choices=["sim", "netns", "lxd"])
+    p.add_argument("--backend", default="sim", choices=["sim", "netns", "lxd", "live"])
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8460)
     p.add_argument("--interval", type=float, help="测量周期 s（默认取模型内计划，5s）")
@@ -364,6 +446,8 @@ def main(argv=None):
     p.add_argument("--single-alarm", action="store_true", help="单告警模式：同一时刻至多一条活动告警（回退开关）")
     p.add_argument("--learn-rounds", type=int, default=0,
                    help="上线前在现场网络学习基线的轮数（接入物理网络时建议 ≥120，即 10 分钟；0 表示沿用模型包基线）")
+    p.add_argument("--baseline", help="用已保存的现场基线（edgefdl baseline --backend live），不重新学习")
+    _live_args(p)
     p.set_defaults(fn=cmd_serve)
 
     p = sp.add_parser("vnet", help="等价虚拟网络 up/down/status")

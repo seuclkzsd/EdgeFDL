@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
-# 实验容器管理：build | shell | smoke | run <cmd...>
+# 实验容器管理：build | build-torch | shell | smoke | run <cmd...>
 # 容器以 --privileged 运行（netns / tc / FRR 需要 CAP_NET_ADMIN 与 CAP_SYS_ADMIN），
 # 仓库挂载到 /work；宿主机无需 sudo，只需在 docker 组。
 # 容器带 --rm，只有仓库目录（/work）里的文件会保留：输出请写到仓库内，如
@@ -15,16 +15,17 @@ cd "$(dirname "$0")/.."
 IMG=${EDGEFDL_LAB_IMAGE:-edgefdl-lab:latest}
 RUN=(docker run --rm --privileged --network none -v "$PWD":/work -w /work
      -e PYTHONPATH=/work -e NO_PROXY='*' -e no_proxy='*' -e OMP_NUM_THREADS=1)
-[ -z "${EDGEFDL_LAB_NAME:-}" ] || RUN+=(--name "$EDGEFDL_LAB_NAME")
+[ -z "${EDGEFDL_LAB_NAME:-}" ] || RUN+=(--name "$EDGEFDL_LAB_NAME")     # 给容器命名，便于并行跑时识别
 [ -z "${EDGEFDL_LAB_CPUSET:-}" ] || RUN+=(--cpuset-cpus "$EDGEFDL_LAB_CPUSET")
 BUILD=(--build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}")
-if [ "${EDGEFDL_LAB_TORCH:-0}" = 1 ]; then
-  BUILD+=(--build-arg TORCH=1)
-  [ -z "${EDGEFDL_PIP_INDEX:-}" ] || BUILD+=(--build-arg PIP_INDEX="$EDGEFDL_PIP_INDEX")
-  [ -z "${EDGEFDL_TORCH_WHEELS:-}" ] || BUILD+=(--build-arg TORCH_WHEELS="$EDGEFDL_TORCH_WHEELS")
-fi
+TORCH=(--build-arg TORCH=1)
+[ -z "${EDGEFDL_PIP_INDEX:-}" ] || TORCH+=(--build-arg PIP_INDEX="$EDGEFDL_PIP_INDEX")
+[ -z "${EDGEFDL_TORCH_WHEELS:-}" ] || TORCH+=(--build-arg TORCH_WHEELS="$EDGEFDL_TORCH_WHEELS")
+[ "${EDGEFDL_LAB_TORCH:-0}" != 1 ] || BUILD+=("${TORCH[@]}")
 case "${1:-shell}" in
   build) NO_PROXY='*' no_proxy='*' docker build --network host "${BUILD[@]}" -t "$IMG" scripts/lab ;;
+  build-torch) NO_PROXY='*' no_proxy='*' docker build --network host "${BUILD[@]}" "${TORCH[@]}" \
+           -t edgefdl-lab-torch:latest scripts/lab ;;
   shell) "${RUN[@]}" -it "$IMG" bash ;;
   smoke) shift; "${RUN[@]}" "$IMG" python3 scripts/netns_smoke.py "$@" ;;
   run)   shift
@@ -35,5 +36,5 @@ case "${1:-shell}" in
            'touch /tmp/.lab-t0; "$@"; rc=$?
             find /work -xdev -user 0 -newer /tmp/.lab-t0 -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null
             exit $rc' lab "$@" ;;
-  *) echo "用法: $0 build|shell|smoke|run <cmd>"; exit 1 ;;
+  *) echo "用法: $0 build|build-torch|shell|smoke|run <cmd>"; exit 1 ;;
 esac

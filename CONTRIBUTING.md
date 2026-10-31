@@ -14,7 +14,7 @@ security problems privately as described in [SECURITY.md](SECURITY.md).
 |---|---|---|
 | `edgefdl/intake/` | Intake form, extraction of devices and links from device configurations and LLDP tables | Parsers for further vendors' configuration syntax, clearer error messages |
 | `edgefdl/topology.py` | Topology model, input validation, IP plan, OSPF shortest paths, monitored targets, coverage planning | Parallel links between two devices, further IP-plan checks |
-| `edgefdl/vnet/` | Equivalent virtual network: `sim`, `netns`, `lxd` backends, FRR configuration | Running the `lxd` backend on hardware, more real-stack checks |
+| `edgefdl/vnet/` | Equivalent virtual network: `sim`, `netns`, `lxd` backends, FRR configuration; the read-only `live` backend for real networks | Running the `lxd` backend on hardware, more real-stack checks, LSDB adapters for vendor routers, field reports from `live` |
 | `edgefdl/faults/` | Fault model, injector (`tc`, `ip`, `vtysh` commands), sample generator | New fault types: **open an issue first** (see below) |
 | `edgefdl/measure/` | Measurement data model, probe commands and parsers, CSV store | Readers for SNMP and device-native NQA / IP SLA results |
 | `edgefdl/agent/` | Features, DDQN agent, inference engines, remediation knowledge | Vendor command templates in `knowledge.py`; changes to features, actions or rewards: **open an issue first** |

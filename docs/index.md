@@ -15,6 +15,7 @@ the pages translate the labels you will see.
 | See it work, nothing to install | [Recorded dashboard replay](demo/README.md) |
 | See it work (about 10 minutes, no network hardware) | [Quick start](quickstart.md) → [Results](results.md) |
 | Prepare it for your own network | [Quick start](quickstart.md) → [Deployment](deployment.md) → [REST API and integrations](api.md) |
+| Run it on a real network, read-only | [Deployment, connecting to a real network](deployment.md#connecting-to-a-real-network) |
 | Connect it to a monitoring or ticketing system | [REST API and integrations](api.md) → [Deployment, section 5](deployment.md#5-integrations) |
 | Understand how it works | [Architecture](architecture.md) → [Algorithms](algorithms.md) → [Results](results.md) |
 | Compare it with other tools | [Comparison](comparison.md) → [Results](results.md) |
@@ -26,7 +27,7 @@ the pages translate the labels you will see.
 | Page | Content |
 |---|---|
 | [Quick start](quickstart.md) | Install on Linux (CPU-only PyTorch is enough), start the dashboard with the bundled model, inject faults from the page and read the alarm, train a model with the pipeline, run the evaluation, self-test and robustness suite, the real-protocol-stack lab in Docker, troubleshooting |
-| [Deployment](deployment.md) | Preparing EdgeFDL for a specific network on an EMS (in 0.1.2 `serve` measures the network's equivalent virtual network): requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, the container image, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
+| [Deployment](deployment.md) | Preparing EdgeFDL for a specific network on an EMS: requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, the container image, connecting to a real network with the read-only `live` backend, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
 | [REST API and integrations](api.md) | Every HTTP endpoint with real example responses and error messages, the cross-site request checks, the alarm object (including device-down alarms), Prometheus metrics, Syslog and Webhook formats, the CSV log schemas |
 
 ## How it works

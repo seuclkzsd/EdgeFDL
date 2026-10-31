@@ -9,7 +9,7 @@ GET  /api/alarms             告警历史
 GET  /api/series?link=L1     链路相关目标的 RTT/丢包序列
 GET  /api/export/<name>.csv  下载测量日志 / 告警日志
 GET  /metrics                Prometheus 指标（与其他网管/监控系统集成）
-POST /api/inject             演示：注入故障 {type, link, value}（仅虚拟网络后端）
+POST /api/inject             演示：注入故障 {type, link, value}（仅虚拟网络后端，live 后端一律拒绝）
 POST /api/clear              演示：清除故障 {link?}
 
 跨站防护（接口无认证，见 SECURITY.md）：
@@ -121,7 +121,8 @@ def parse_fault(topo: Topology, body) -> Fault:
 
 def make_handler(engine, topo: Topology, allow_inject: bool = True):
     pos = layout(topo)
-    topo_json = dict(topo.to_dict(), layout=pos,
+    read_only = bool(engine.backend.read_only)
+    topo_json = dict(topo.to_dict(), layout=pos, inject_enabled=allow_inject and not read_only,
                      fault_types=[dict(id=t, label=TYPE_LABEL[t]) for t in FAULT_TYPES])
 
     class H(BaseHTTPRequestHandler):
@@ -233,6 +234,8 @@ def make_handler(engine, topo: Topology, allow_inject: bool = True):
             try:
                 raw = self._body()
                 self._check_host()
+                if read_only:
+                    raise BadRequest(403, "live 后端只读：不向真实网络注入或清除故障")
                 if not allow_inject or engine.backend.name not in ("sim", "netns", "lxd"):
                     raise BadRequest(403, "当前后端不允许注入故障")
                 self._check_post()

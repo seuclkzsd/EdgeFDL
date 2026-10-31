@@ -1,0 +1,3251 @@
+{
+ "conditions": {
+  "network": "demo topology on network namespaces, FRR OSPF (hello 1 s, dead 4 s), tc netem + tbf, in a privileged container; net.ipv4.icmp_ratelimit=1000 on the routers",
+  "model": "results/model.pt",
+  "interval_s": 5.0,
+  "learn_rounds": 40,
+  "alarm_timeout_s": 120.0,
+  "clear_timeout_s": 90.0,
+  "settle_s": 20.0,
+  "fault_values": {
+   "link_down": 1.0,
+   "delay": 20.0,
+   "loss": 0.15,
+   "jitter": 15.0,
+   "bandwidth": 0.2,
+   "route_drift": "largest factor that changes a monitored path"
+  },
+  "isolation": "serve ran in the efl-ems namespace as its own process; faults were applied by this script with tc, ip and vtysh directly on the device namespaces; results were read from alarm_log.csv only"
+ },
+ "modes": {
+  "ping": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "results/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "40",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final/ping-L1_L6_L12/logs"
+   ],
+   "runs": [
+    {
+     "links": "L1,L6,L12",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 432,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 3,
+      "alarms_total": 13,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 955.5
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 2441.8,
+     "probe_kbps": 59.7,
+     "idle_s": 600.0,
+     "idle_alarms": []
+    },
+    {
+     "links": "L4,L8,L13",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 331,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 13,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 903.4
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 1936.6,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "",
+     "preflight_seconds": 47.8,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 40,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 2,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 60.6,
+       "pct_of_min_link": 0.061,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 1183.5
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 480.4,
+     "probe_kbps": 60.6
+    }
+   ],
+   "rows": [
+    {
+     "link": "L1",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L1",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 31.7,
+     "time_to_clear_s": 28.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 35.2,
+     "time_to_clear_s": 23.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 13.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L6",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L12",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 35.4,
+     "time_to_clear_s": 23.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 34.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L4",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 23.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 13.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L4",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 29.6,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 45.4,
+     "time_to_clear_s": 13.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.5,
+     "time_to_clear_s": 84.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "value": 0.3,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L13",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 23.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 39.8,
+     "time_to_clear_s": 44.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6/L9/L10/L13",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": 29.8,
+     "time_to_clear_s": 23.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2/L3/L6/L7",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": 35.7,
+     "time_to_clear_s": 23.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 36,
+    "correct": 19,
+    "by_type": {
+     "link_down": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 1,
+      "mean_time_to_alarm_s": 36.2,
+      "max_time_to_alarm_s": 45.4
+     },
+     "delay": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 33.7,
+      "max_time_to_alarm_s": 34.9
+     },
+     "loss": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 37.1,
+      "max_time_to_alarm_s": 44.5
+     },
+     "jitter": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 34.5,
+      "max_time_to_alarm_s": 34.9
+     },
+     "bandwidth": {
+      "n": 6,
+      "alarmed": 0,
+      "correct": 0,
+      "mean_time_to_alarm_s": null,
+      "max_time_to_alarm_s": null
+     },
+     "route_drift": {
+      "n": 4,
+      "alarmed": 2,
+      "correct": 0,
+      "mean_time_to_alarm_s": 32.1,
+      "max_time_to_alarm_s": 34.6
+     },
+     "node_down": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 0,
+      "mean_time_to_alarm_s": 32.8,
+      "max_time_to_alarm_s": 35.7
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  },
+  "infer": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "results/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "40",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final2/infer-L1/logs",
+    "--infer-state"
+   ],
+   "runs": [
+    {
+     "links": "L1",
+     "preflight_seconds": 48.6,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 111,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 1,
+      "alarms_total": 5,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.8,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 953.6
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 837.6,
+     "probe_kbps": 59.8
+    },
+    {
+     "links": "L6",
+     "preflight_seconds": 47.8,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 112,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 5,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 968.5
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 841.8,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "L12",
+     "preflight_seconds": 47.7,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 103,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 4,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 963.4
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 796.7,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "L4",
+     "preflight_seconds": 47.8,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 111,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 5,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 965.1
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 836.9,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "L8",
+     "preflight_seconds": 48.5,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 126,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 5,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 931.9
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 912.9,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "L13",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 99,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 4,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 961.8
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 776.8,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "",
+     "preflight_seconds": 48.5,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 128,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 0,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 872.0
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 926.5,
+     "probe_kbps": 59.7,
+     "idle_s": 600.0,
+     "idle_alarms": []
+    },
+    {
+     "links": "",
+     "preflight_seconds": 48.5,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 37,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 1,
+      "alarms_total": 2,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 60.7,
+       "pct_of_min_link": 0.061,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 1273.6
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 467.3,
+     "probe_kbps": 60.7
+    }
+   ],
+   "rows": [
+    {
+     "link": "L1",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.8,
+     "time_to_clear_s": 13.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L1",
+     "type_ok": false,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 19.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 39.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 33.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.9,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.4,
+     "time_to_clear_s": 34.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 13.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.1,
+     "time_to_clear_s": 63.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 33.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.5,
+     "time_to_clear_s": 24.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.7,
+     "time_to_clear_s": 13.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 39.6,
+     "time_to_clear_s": 84.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "value": 0.3,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L5",
+     "type_ok": true,
+     "link_ok": false,
+     "time_to_alarm_s": 54.3,
+     "time_to_clear_s": 19.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L5"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.8,
+     "time_to_clear_s": 13.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.9,
+     "time_to_clear_s": 39.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6/L9/L10/L13",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "node_down",
+     "alarm_link": "L6/L9/L10/L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.8,
+     "time_to_clear_s": 18.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "node_down L6/L9/L10/L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2/L3/L6/L7",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "node_down",
+     "alarm_link": "L2/L3/L6/L7",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.5,
+     "time_to_clear_s": 13.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "node_down L2/L3/L6/L7"
+     ],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 36,
+    "correct": 28,
+    "by_type": {
+     "link_down": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 33.0,
+      "max_time_to_alarm_s": 35.0
+     },
+     "delay": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 33.6,
+      "max_time_to_alarm_s": 34.9
+     },
+     "loss": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 5,
+      "mean_time_to_alarm_s": 36.5,
+      "max_time_to_alarm_s": 44.9
+     },
+     "jitter": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 34.6,
+      "max_time_to_alarm_s": 34.8
+     },
+     "bandwidth": {
+      "n": 6,
+      "alarmed": 0,
+      "correct": 0,
+      "mean_time_to_alarm_s": null,
+      "max_time_to_alarm_s": null
+     },
+     "route_drift": {
+      "n": 4,
+      "alarmed": 4,
+      "correct": 3,
+      "mean_time_to_alarm_s": 44.4,
+      "max_time_to_alarm_s": 54.3
+     },
+     "node_down": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 33.6,
+      "max_time_to_alarm_s": 35.5
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  },
+  "lsdb": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "results/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "40",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final/lsdb-L1_L6_L12/logs",
+    "--lsdb-cmd",
+    "vtysh -N efl-core -c 'show ip ospf database router json'"
+   ],
+   "runs": [
+    {
+     "links": "L1,L6,L12",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 409,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 1,
+      "alarms_total": 14,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 943.6
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 2326.7,
+     "probe_kbps": 59.7,
+     "idle_s": 600.0,
+     "idle_alarms": []
+    },
+    {
+     "links": "L4,L8,L13",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 319,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 1,
+      "alarms_total": 14,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 59.7,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 902.9
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 1877.0,
+     "probe_kbps": 59.7
+    },
+    {
+     "links": "",
+     "preflight_seconds": 47.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 37,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 2,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 60.5,
+       "pct_of_min_link": 0.06,
+       "pct_of_uplink": 0.006
+      },
+      "round_ms": 1186.5
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 465.6,
+     "probe_kbps": 60.5
+    }
+   ],
+   "rows": [
+    {
+     "link": "L1",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.8,
+     "time_to_clear_s": 18.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.5,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.3,
+     "time_to_clear_s": 13.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.3,
+     "time_to_clear_s": 14.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.9,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.6,
+     "time_to_clear_s": 13.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 34.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.3,
+     "time_to_clear_s": 14.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.8,
+     "time_to_clear_s": 13.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.4,
+     "time_to_clear_s": 14.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.2,
+     "time_to_clear_s": 13.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 99.1,
+     "time_to_clear_s": 84.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 14.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "value": 0.3,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.8,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.6,
+     "time_to_clear_s": 13.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.4,
+     "time_to_clear_s": 44.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L6/L9/L10/L13",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "node_down",
+     "alarm_link": "L6/L9/L10/L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.9,
+     "time_to_clear_s": 23.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "node_down L6/L9/L10/L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2/L3/L6/L7",
+     "type": "node_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "node_down",
+     "alarm_link": "L2/L3/L6/L7",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.7,
+     "time_to_clear_s": 13.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "node_down L2/L3/L6/L7"
+     ],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 36,
+    "correct": 30,
+    "by_type": {
+     "link_down": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 30.6,
+      "max_time_to_alarm_s": 31.8
+     },
+     "delay": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 34.5,
+      "max_time_to_alarm_s": 34.8
+     },
+     "loss": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 47.1,
+      "max_time_to_alarm_s": 99.1
+     },
+     "jitter": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 34.5,
+      "max_time_to_alarm_s": 35.0
+     },
+     "bandwidth": {
+      "n": 6,
+      "alarmed": 0,
+      "correct": 0,
+      "mean_time_to_alarm_s": null,
+      "max_time_to_alarm_s": null
+     },
+     "route_drift": {
+      "n": 4,
+      "alarmed": 4,
+      "correct": 4,
+      "mean_time_to_alarm_s": 29.6,
+      "max_time_to_alarm_s": 29.9
+     },
+     "node_down": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 30.3,
+      "max_time_to_alarm_s": 30.7
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  },
+  "ends": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "results/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "40",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final/ends-L1_L6_L12/logs",
+    "--lsdb-cmd",
+    "vtysh -N efl-core -c 'show ip ospf database router json'",
+    "--endpoints",
+    "runs/lab/final/ends-L1_L6_L12/endpoints.yaml"
+   ],
+   "runs": [
+    {
+     "links": "L1,L6,L12",
+     "preflight_seconds": 49.0,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 394,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 17,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 818.6,
+       "pct_of_min_link": 0.819,
+       "pct_of_uplink": 0.082
+      },
+      "round_ms": 967.9
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 2369.5,
+     "probe_kbps": 818.6,
+     "idle_s": 600.0,
+     "idle_alarms": []
+    },
+    {
+     "links": "L4,L8,L13",
+     "preflight_seconds": 49.1,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 270,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 0,
+      "alarms_total": 17,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 818.6,
+       "pct_of_min_link": 0.819,
+       "pct_of_uplink": 0.082
+      },
+      "round_ms": 962.1
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 1749.6,
+     "probe_kbps": 818.6
+    }
+   ],
+   "rows": [
+    {
+     "link": "L1",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.6,
+     "time_to_clear_s": 13.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 59.4,
+     "time_to_clear_s": 29.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L1",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.3,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L1"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.1,
+     "time_to_clear_s": 13.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.1,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.2,
+     "time_to_clear_s": 13.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 14.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 69.8,
+     "time_to_clear_s": 29.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L6",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.6,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L6"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.4,
+     "time_to_clear_s": 13.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 49.5,
+     "time_to_clear_s": 27.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L12",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 69.1,
+     "time_to_clear_s": 30.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L12"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.5,
+     "time_to_clear_s": 13.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.6,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 64.3,
+     "time_to_clear_s": 29.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L4",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L4"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.0,
+     "time_to_clear_s": 13.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 14.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.9,
+     "time_to_clear_s": 22.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.8,
+     "time_to_clear_s": 14.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 59.7,
+     "time_to_clear_s": 29.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "value": 0.3,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L8",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.6,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L8"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 30.4,
+     "time_to_clear_s": 13.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 39.5,
+     "time_to_clear_s": 17.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L13"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "value": 0.2,
+     "alarmed": true,
+     "alarm_type": "bandwidth",
+     "alarm_link": "L13",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 64.1,
+     "time_to_clear_s": 29.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "bandwidth L13"
+     ],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 34,
+    "correct": 34,
+    "by_type": {
+     "link_down": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 30.7,
+      "max_time_to_alarm_s": 31.6
+     },
+     "delay": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 33.7,
+      "max_time_to_alarm_s": 35.0
+     },
+     "loss": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 38.1,
+      "max_time_to_alarm_s": 49.5
+     },
+     "jitter": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 33.0,
+      "max_time_to_alarm_s": 34.9
+     },
+     "bandwidth": {
+      "n": 6,
+      "alarmed": 6,
+      "correct": 6,
+      "mean_time_to_alarm_s": 64.4,
+      "max_time_to_alarm_s": 69.8
+     },
+     "route_drift": {
+      "n": 4,
+      "alarmed": 4,
+      "correct": 4,
+      "mean_time_to_alarm_s": 29.4,
+      "max_time_to_alarm_s": 29.6
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  }
+ },
+ "note": "Debian 12 container edgefdl-lab-torch: Python 3.11.2, PyTorch 2.9.1+cpu, FRR 8.4.4, traceroute 2.1.2, iputils 20221126; Linux 5.15.0-139 on 2 x Xeon Gold 6336Y. Each entry of runs is one container with its own network; serve was restarted between containers, so baselines were learned per container."
+}

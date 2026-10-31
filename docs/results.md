@@ -327,6 +327,48 @@ python3 scripts/realstack_eval.py table runs/realstack/realstack.json
 Optional: `EDGEFDL_CPUSETS="24-25 26-27 ..."` pins the containers to those CPUs. Use `cpuset`, not a CPU quota: the
 stalls of a quota appear in the measurements as network delay.
 
+### Live backend, black box
+
+The `live` backend measures a real routed network read-only from the EMS
+([Connecting to a real network](deployment.md#connecting-to-a-real-network)). `scripts/live_blackbox.py` tests the backend as a black box on a real protocol stack, the demo topology on network
+namespaces with FRR OSPF and `tc`. One process builds the network and exits, `serve --backend live` runs in the EMS's
+namespace, and a separate script applies each fault with `tc`, `ip` and `vtysh` directly on the device namespaces and
+reads the outcome from `alarm_log.csv`. The serving process has no fault object and no access to the injected state:
+`ground_truth` stayed empty and `POST /api/inject` answered 403. Routers ran at the Linux default ICMP rate limit, faults
+were those of the self-test, 5 s rounds, baseline learned over 40 rounds. Raw results:
+[`results/live_blackbox.json`](../results/live_blackbox.json).
+
+| Inputs | Right type and link | Link down | Delay | Loss | Jitter | Bandwidth | Route drift | Device down | Mean time to alarm | Alarms outside faults |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Ping and traceroute only | 19/36 | 1/6 | 6/6 | 6/6 | 6/6 | 0/6 | 0/4 | 0/2 | 35.7 s | 0 |
+| `--infer-state` | 28/36 | 6/6 | 6/6 | 5/6 | 6/6 | 0/6 | 3/4 | 2/2 | 35.1 s | 0 |
+| `--lsdb-cmd` | 30/36 | 6/6 | 6/6 | 6/6 | 6/6 | 0/6 | 4/4 | 2/2 | 35.3 s | 0 |
+| `--lsdb-cmd` and `--endpoints` | 34/34 | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 | 4/4 | not run | 38.7 s | 0 |
+
+"Alarms outside faults" counts alarms raised while no fault was applied: a 10-minute idle run per row and 20 s before each
+fault. `results/live_blackbox.json` lists every scenario with the alarmed type and link, the time to alarm and the time to
+clear. Bandwidth faults raise no alarm without packet trains, by design. Time to alarm is the mean over the alarms that
+were right. The wrong alarms: without an LSDB source, 5 of 6 link-down faults are reported as loss on the right link, a device down as
+loss on one of its links, and a route drift as delay or not at all. With `--infer-state`, one 15% loss on L1 was reported as route drift on L1, and the route
+drift on L8 as route drift on L5. This network is virtual: it has real OSPF, forwarding and queues, but not the devices, optics or traffic of a
+production network, and `live` has not yet run on physical devices.
+
+
+What each missing input costs, on the simulator, with the same model
+([`results/live_missing.json`](../results/live_missing.json)):
+
+| Inputs | Right type and link, of 84 | Link down /15 | Delay /15 | Loss /15 | Jitter /15 | Bandwidth /15 | Route drift /9 | False alarms in 24 h |
+|---|---|---|---|---|---|---|---|---|
+| All inputs (control) | 84 | 15 | 15 | 15 | 15 | 15 | 9 | 0 |
+| No LSDB | 60 | 0 | 15 | 15 | 15 | 15 | 0 | 0 |
+| No endpoints | 69 | 15 | 15 | 15 | 15 | 0 | 9 | 3 |
+| Ping and traceroute only | 51 | 9 | 14 | 14 | 14 | 0 | 0 | 3 |
+| Ping and traceroute with `--infer-state` | 63 | 15 | 14 | 14 | 14 | 0 | 6 | 3 |
+
+Every row but the first traces 5 targets per round, as the backend does. Same seed and scenarios as the self-test; on
+this run the control row took a mean of 30 s to alarm a link-down fault. A false alarm here is an alarm in the noise
+run, with no fault present.
+
 ## 4. Robustness
 
 `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` runs the same model with the same
@@ -498,6 +540,9 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Normal baseline | `python -m edgefdl baseline --rounds 40 --seed 1 -o runs/check/baseline.json` | identical to `results/baseline.json` | seconds |
 | Full pipeline: baseline, samples, training, evaluation, self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | `runs/v6/` with `baseline.json`, `train/val/test/test_rand.npz`, `model.pt`, `eval_test.json`, `eval_test_rand.json`, `bench/bench.json` | about 15 minutes |
 | Self-test (72-hour equivalent) | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | `runs/bench/bench.json` | about 5 minutes, single process |
+| Live backend, black box | `scripts/lab.sh build && scripts/lab.sh build-torch`<br>`EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb --out runs/lab/lsdb.json` (`--mode ping`, `infer`, `ends`; `--links`, `--types`, `--devices`, `--idle`; `--merge` joins the files) | `runs/lab/lsdb.json`, as in `results/live_blackbox.json` | about 30 minutes per 17 scenarios |
+| Cost of missing inputs | `python scripts/live_missing.py --out runs/check/live_missing.json` | as in `results/live_missing.json` | about 3 minutes |
+| Traceroute and ICMP rate limits | `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --trace-check --out runs/lab/trace.json` | as in `results/live_trace_check.json` | about 5 minutes |
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
 | Measured comparison | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | `runs/compare/compare.json`, the file published as `results/compare.json` | about 14 min with 24 workers |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
@@ -540,6 +585,10 @@ Notes:
 | [`results/compare.json`](../results/compare.json) | Measured comparison with re-implementations of published methods, see [comparison.md](comparison.md#measured-comparison) |
 | [`results/realstack.json`](../results/realstack.json) | Section 3.1, every scenario, trial and fault-free run on the real stack |
 | [`results/realstack/`](../results/realstack/) | Section 3.1, gzipped `measure_log.csv` of the 84 scenarios (`*_measure.csv.gz`) and `alarm_log.csv` of all containers (`*_alarm.csv.gz`) |
+| [`results/live_blackbox.json`](../results/live_blackbox.json) | Section 3, live backend: every scenario of the black-box run |
+| [`results/live_intake.json`](../results/live_intake.json) | Section 3, the same run on a model built from the intake sample |
+| [`results/live_missing.json`](../results/live_missing.json) | Section 3, cost of each missing input on the simulator |
+| [`results/live_trace_check.json`](../results/live_trace_check.json) | Section 3, traceroute under router ICMP rate limits, and the broadcast-network LSDB check |
 
 The file formats and the JSON keys, including an English glossary of the Chinese keys and condition names, are
 documented in [`results/README.md`](../results/README.md).
