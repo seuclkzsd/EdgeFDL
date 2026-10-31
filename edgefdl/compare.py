@@ -47,6 +47,7 @@ HOLD = 12                   # 基线告警的保持轮数：实体连续 HOLD �
 BW_DROP, CP_K, BW_K = 0.7, 2, 2     # "+ems" 规则门限，取 EdgeFDL 判决器（core/denoise.py）的同名参数
 ETA = 1 / 360               # RTT 与背景丢包的跟踪速率，同 FeatureEncoder.track
 LOW_FA = 1.0                # 低误报工作点：验证集正常运行误报上限（条/天）
+NODE_K = 3                  # 设备级规则：全部地址连续不通的轮数
 JITTER_RATIO = 0.2          # 类型规则：RTT 抖动 ≥ 0.2 × RTT 超出量判为抖动（netem 式抖动约 0.6，固定时延约 0，取几何中点）
 RTT_FLOOR_MS = 2.0          # 类型规则：路径 RTT 超出量低于此值时不算时延类证据，判为丢包
 
@@ -156,6 +157,8 @@ class Evidence:
                              for n, v in self.topo.nodes.items() if v.transit}
         self.node_links = {n: [self.lids.index(l.id) for l in self.topo.links if n in (l.a, l.b)]
                            for n in self.node_targets}
+        self.node_adj = {n: [self.lids.index(l.id) for l in self.topo.links if n in (l.a, l.b)
+                             and self.topo.nodes[l.other(n)].transit] for n in self.node_targets}
         self.cp_down, self.cp_cost, self.bw_low = self._rule_events()
         self.base_bw = enc.base.bw
         self._flag_cache: Dict = {}
@@ -404,12 +407,15 @@ def classify(ev: Evidence, r: int, li: int, Inc: np.ndarray, bad: np.ndarray, s:
     return "jitter" if float(np.nanmedian(m)) >= JITTER_RATIO * med else "delay"
 
 
-def node_dead(ev: Evidence, r: int, s: int) -> List[str]:
-    """设备级规则：一台路由设备的全部地址连续 2 轮不通（且不是全网失联）即判设备宕机。"""
-    if r - 1 < s:
+def node_dead(ev: Evidence, r: int, s: int, rules: bool = False) -> List[str]:
+    """设备级规则：一台路由设备的全部地址连续 NODE_K 轮不通（且不是全网失联）即判设备宕机；rules=True 时改看 LSDB：
+    地址连续 2 轮不通且与相邻路由设备的邻接全部断开（瞬时突发丢包不会断邻接）。"""
+    k = 2 if rules else NODE_K
+    if r - k + 1 < s:
         return []
-    d = ev.dead[r - 1] & ev.dead[r]
-    out = [n for n, ts in ev.node_targets.items() if ts and d[ts].all()]
+    d = np.logical_and.reduce(ev.dead[r - k + 1:r + 1])
+    out = [n for n, ts in ev.node_targets.items() if ts and d[ts].all()
+           and (not rules or (ev.node_adj[n] and not ev.adj[r, ev.node_adj[n]].any()))]
     return out if len(out) * 2 < len(ev.node_targets) else []
 
 
@@ -441,7 +447,7 @@ def link_alarms(ev: Evidence, s: int, e: int, inferred: Dict[int, Tuple[List[int
     for r in sorted(rounds):
         ls, bad, Inc = inferred.get(r, ([], None, ev.Inc[ev.rid[r]]))
         ls = list(ls)
-        nd = node_dead(ev, r, s)
+        nd = node_dead(ev, r, s, rules)
         for n in nd:
             rz.see(r, "node", n, "node_down")
         gone = {x for n in nd for x in ev.node_links[n]}
@@ -844,12 +850,13 @@ def drive_engine(eng, rec, cases, suite, after, tail) -> List[Dict]:
             step()
         for f in cs["faults"]:
             eng.backend.inject(f)
-        inj, p0 = rec.n, eng.deep_probes
+        inj, p0, x0 = rec.n, eng.deep_probes, eng.extra_probes
         for k in range(after + tail):
             if k == after:
                 eng.backend.clear()
             step()
-        segs.append(dict(suite=suite, s=s, inj=inj, e=rec.n, case=cs, alarms=al, probes=eng.deep_probes - p0))
+        segs.append(dict(suite=suite, s=s, inj=inj, e=rec.n, case=cs, alarms=al, probes=eng.deep_probes - p0,
+                         recheck_probes=eng.extra_probes - x0))
     return segs
 
 
@@ -887,7 +894,8 @@ def _test_job(job):
         f = sg["case"]["faults"][0]
         pred = next((f"{a[2]} {a[3]}" for a in al if a[0] >= sg["inj"]), "no alarm")
         rows.append(dict(method=name, suite=sg["suite"], cond=c["name"], seed=seed, link=f.link, type=f.type,
-                         value=f.value, pred=pred, probes=sg.get("probes", 0) if name == "edgefdl" else 0, **x))
+                         value=f.value, pred=pred, probes=sg.get("probes", 0) if name == "edgefdl" else 0,
+                         recheck=sg.get("recheck_probes", 0) if name == "edgefdl" else 0, **x))
     for sg in segs:
         add("edgefdl", sg, sg["alarms"])
     for sg in nodeep:
@@ -984,8 +992,9 @@ def summarize(results: List[Dict]) -> Dict:
             rs = by.get((m, "single", c), [])
             out["single"][m][c] = agg(rs)
             out["by_type"][m][c] = {t: agg([r for r in rs if r["type"] == t]) for t in FAULT_TYPES}
-            out["by_link"][m][c] = {l: agg([r for r in rs if r["link"] == l])
-                                    for l in sorted({r["link"] for r in rs}, key=lambda s: int(s[1:]))}
+            if c == "standard" or m == "edgefdl":
+                out["by_link"][m][c] = {l: agg([r for r in rs if r["link"] == l])
+                                        for l in sorted({r["link"] for r in rs}, key=lambda s: int(s[1:]))}
             out["per_seed"][m][c] = {str(s): agg([r for r in rs if r["seed"] == s])
                                      for s in sorted({r["seed"] for r in rs})}
         out["dual"][m] = agg(by.get((m, "dual", "standard"), []))
@@ -1068,7 +1077,10 @@ def run_compare(model: str, out: str, workers: int = 24, seeds: Sequence[int] = 
     edge = [r for x in results for r in x["rows"] if r["method"] == "edgefdl"]
     assert edge, "没有 EdgeFDL 结果"
     res["consistency"] = consistency(model, edge)
-    res["edgefdl_deep_probes_per_case"] = round(float(np.mean([r["probes"] for r in edge])), 3)
+    es = [r for r in edge if r["suite"] == "single" and r["cond"] == "standard"]
+    res["edgefdl_deep_probes_per_fault"] = dict(
+        condition="standard, 84 single-fault scenarios", all=round(float(np.mean([r["probes"] for r in es])), 3),
+        alarm_clearing_rechecks=round(float(np.mean([r["recheck"] for r in es])), 3))
     res["streams"] = [{k: x[k] for k in ("cond", "seed", "rounds", "wall_engine", "wall_baselines", "detector_triggers",
                                          "filtered_by_agent")} for x in results]
     res["wall_s"] = round(time.time() - t0, 1)

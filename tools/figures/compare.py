@@ -37,9 +37,10 @@ ROWS = (("threshold:default", "Threshold, Zabbix ICMP defaults"), ("threshold:tu
         ("vote007+ems:tuned", "007 + EMS rules"), ("edgefdl", "EdgeFDL"))
 TYPES = (("link_down", "Link\ndown"), ("delay", "Delay"), ("loss", "Loss"), ("jitter", "Jitter"), ("bandwidth", "Band-\nwidth"),
          ("route_drift", "Route\ndrift"))
-CONDS = (("standard", "Standard"), ("icmp_limit_5pct_new", "ICMP limit\nnew"), ("icmp_limit_5pct_known", "ICMP limit\nknown"),
+CONDS = (("standard", "Standard"), ("icmp_limit_5pct_new", "ICMP 5%\nnew"), ("icmp_limit_5pct_known", "ICMP 5%\nknown"),
          ("transient_15s", "15 s\ntransients"), ("background_jitter_1ms", "Jitter\n1 ms"),
          ("busy_hour_drift_1ms", "Busy-hour\ndrift"))
+LOW = tuple((k.replace(":tuned", ":lowfa"), n + ", low-FA point") for k, n in ROWS if k.endswith(":tuned"))
 
 
 def cell(ax, m, labels, fmt, norm, cmap, sep):
@@ -98,20 +99,30 @@ def fmt(v, p=1):
 
 
 def tables(r):
-    print("| Method | Detected % | Link % | Link + type % | Alarms per fault, mean / max | Time to first alarm, s | "
-          "False alarms per day |")
-    print("|---|---|---|---|---|---|---|")
-    for k, n in ROWS + (("edgefdl_no_deep", "EdgeFDL without deep probes"),):
+    print("| Method | Detected % | Link % | Link + type % | Link in any alarm % | Alarms per fault, mean / max | "
+          "Time to first alarm, s | False alarms per day |")
+    print("|---|---|---|---|---|---|---|---|")
+    extra = (("edgefdl_no_deep", "EdgeFDL without deep probes"),)
+    for k, n in ROWS[:-1] + LOW + ROWS[-1:] + extra:
         a = r["single"].get(k, {}).get("standard")
         if not a:
             continue
         fa = r["false_alarms"].get(k, {}).get("standard", {}).get("per_day")
         print(f"| {n} | {fmt(a['detected_pct'])} | {fmt(a['link_pct'])} | {fmt(a['link_type_pct'])} | "
-              f"{a['alarms_mean']:.2f} / {a['alarms_max']} | {fmt(a['time_to_alarm_mean_s'])} | {fmt(fa, 2)} |")
+              f"{fmt(a['all_link_pct'])} | {a['alarms_mean']:.2f} / {a['alarms_max']} | "
+              f"{fmt(a['time_to_alarm_mean_s'])} | {fmt(fa, 2)} |")
+    print()
+    print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in TYPES) + " |")
+    print("|---|" + "---|" * len(TYPES))
+    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
+        if k not in r["by_type"] or k == "threshold:default":
+            continue
+        print(f"| {n} | " + " | ".join(fmt((r["by_type"][k]["standard"].get(t) or {}).get("time_to_alarm_mean_s"), 0)
+                                       for t, _ in TYPES) + " |")
     print()
     print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in TYPES) + " | L3 (all types) |")
     print("|---|" + "---|" * (len(TYPES) + 1))
-    for k, n in ROWS:
+    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
         if k not in r["by_type"]:
             continue
         row = [fmt((r["by_type"][k]["standard"].get(t) or {}).get("link_type_pct")) for t, _ in TYPES]
@@ -120,7 +131,7 @@ def tables(r):
     print()
     print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in CONDS) + " |")
     print("|---|" + "---|" * len(CONDS))
-    for k, n in ROWS:
+    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
         if k not in r["single"]:
             continue
         row = []
@@ -133,7 +144,7 @@ def tables(r):
     print("| Method | Dual: first correct % | Dual: both links % | Dual: both + types % | Dual: alarms mean / max | "
           "Dual: wrong alarms | Device: named % | Device: alarms mean / max |")
     print("|---|---|---|---|---|---|---|---|")
-    for k, n in ROWS + (("edgefdl_no_deep", "EdgeFDL without deep probes"),):
+    for k, n in ROWS[:-1] + LOW + ROWS[-1:] + extra:
         d, g = r["dual"].get(k) or {}, r["node"].get(k) or {}
         if not d:
             continue

@@ -214,6 +214,22 @@ class Stream(unittest.TestCase):
         self.assertFalse(ev.bw_low.any())
         self.assertTrue(ev.cp_down[-1, ev.lids.index("L5")])
 
+    def test_device_rule(self):
+        faults = [Fault("link_down", l) for l in ("L4", "L8", "L11")]         # acc1 的全部链路
+        ev, pre = self.record(faults)
+        self.assertEqual(C.node_dead(ev, pre + 1, 0, True), ["acc1"])
+        self.assertEqual(C.node_dead(ev, pre + 1, 0), [])                     # 只看路径要连续 3 轮
+        self.assertEqual(C.node_dead(ev, pre + 2, 0), ["acc1"])
+        res = C.run_method("scfs", ev, 0, ev.R, C.DEFAULTS["scfs"])
+        self.assertEqual(res["+ems"], [(pre + 1, "node", "acc1", "node_down")])
+
+    def test_device_rule_needs_the_adjacency_with_lsdb(self):
+        ev, pre = self.record([])
+        ev.dead[:] = True
+        ev.dead[:, [i for i, t in enumerate(ev.enc.targets) if t.node != "acc1"]] = False
+        self.assertEqual(C.node_dead(ev, 10, 0), ["acc1"])                    # 突发丢包让地址全不通
+        self.assertEqual(C.node_dead(ev, 10, 0, True), [])                    # 邻接还在，不是设备宕机
+
     def test_threshold_names_no_link(self):
         ev, pre = self.record([Fault("delay", "L1", 20.0)])
         al = C.run_method("threshold", ev, 0, ev.R, dict(rtt=5, lost="auto", k=3, n=3))[""]
