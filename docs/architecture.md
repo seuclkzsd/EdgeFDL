@@ -176,8 +176,9 @@ stack with the simulator; [`scripts/compare_robust.py`](../scripts/compare_robus
 single-alarm robustness runs seed by seed; [`tests/`](../tests/) holds the unit tests
 ([`test_core.py`](../tests/test_core.py), [`test_engine.py`](../tests/test_engine.py),
 [`test_infra.py`](../tests/test_infra.py));
-[`tools/dev/spdx.py`](../tools/dev/spdx.py) checks license headers; [`configs/`](../configs/) holds the demo
-topology and a sample intake form with device configurations.
+[`tools/dev/spdx.py`](../tools/dev/spdx.py) checks license headers; [`tools/demo/`](../tools/demo/) records the
+dashboard replay and assembles its static site ([demo/README.md](demo/README.md)); [`configs/`](../configs/) holds the
+demo topology and a sample intake form with device configurations.
 
 ## Data artefacts
 

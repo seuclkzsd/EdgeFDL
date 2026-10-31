@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# Publish the recorded dashboard replay to GitHub Pages. tools/demo/build_site.py assembles the static site from
+# docs/demo/ and the dashboard page, so the dashboard is not stored twice in git.
+# Runs on main only. The whole workflow is skipped while the repository is private, and nothing is built or
+# published until Pages is enabled for the repository (Settings > Pages > Source: GitHub Actions).
+# Actions are pinned to commit SHAs, their release tag in the comment.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/demo/**
+      - edgefdl/core/web/**
+      - tools/demo/build_site.py
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Pages available?
+    if: github.ref == 'refs/heads/main' && github.event.repository.private == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - name: Ask the API whether Pages is enabled
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh api "repos/$REPO/pages" --silent; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub Pages is not enabled for this repository; nothing to publish"
+          fi
+
+  build:
+    name: Build the site
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Assemble the site
+        run: python3 tools/demo/build_site.py --out build/site
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: build/site
+
+  deploy:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
