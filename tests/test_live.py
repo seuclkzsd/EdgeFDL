@@ -602,8 +602,10 @@ class LiveEndpointProcessTest(unittest.TestCase):
             self.assertEqual(rc[0], 124)
             with open(pid, encoding="utf-8") as f:
                 n = int(f.read())
-        with self.assertRaises(ProcessLookupError):
-            os.killpg(n, signal.SIG_DFL)
+        with self.assertRaises(ProcessLookupError):                           # 被杀的子进程要等 init 回收，组才消失
+            for _ in range(100):
+                os.killpg(n, signal.SIG_DFL)
+                time.sleep(0.05)
 
     def test_bad_prefixes(self):
         with tempfile.TemporaryDirectory() as d:
