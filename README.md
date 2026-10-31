@@ -111,7 +111,7 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 | `live` backend, black box | `scripts/lab.sh build-torch`, then `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | Docker with privileged containers; about 30 min per 17 scenarios |
 | Container image end to end | `tools/dev/ci.sh image` | Docker with the compose plugin; builds, injects a fault through the REST API, checks alarm and recovery, removes everything |
 | Dashboard replay | `python tools/demo/record.py` | one real-time run, about 14 min |
-| Unit tests | `python -m unittest discover -s tests` | 176 tests |
+| Unit tests | `python -m unittest discover -s tests` | 177 tests |
 
 The pipeline trains a new model in `runs/v6/`, which is not identical to the released one; the figures on this page
 were measured with `results/model.pt`, and evaluating that bundle reproduces the test-set figures exactly. The lab

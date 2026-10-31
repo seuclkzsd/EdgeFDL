@@ -6,7 +6,7 @@
 
 The checks are those of [CONTRIBUTING.md, "Checks before a pull request"](https://github.com/seuclkzsd/EdgeFDL/blob/main/CONTRIBUTING.md#checks-before-a-pull-request) and CI.
 
-<!-- Tick the checks you actually ran and paste the end of their output (for example "Ran 176 tests ... OK"). -->
+<!-- Tick the checks you actually ran and paste the end of their output (for example "Ran 177 tests ... OK"). -->
 
 - [ ] `python -m unittest discover -s tests`
 - [ ] `python tools/dev/spdx.py`

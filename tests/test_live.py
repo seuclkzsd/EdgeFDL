@@ -319,6 +319,23 @@ def rr_of(topo, dead=(), paths=None):
     return rr
 
 
+class LivePreflightCommandTest(unittest.TestCase):
+    def _run(self, ok):
+        from edgefdl import cli
+        args = cli.argparse.Namespace(model=None, topo=TOPO, count=1, json=None)
+        with mock.patch.object(cli, "_backend"), mock.patch.object(cli, "_plan"), \
+                mock.patch("edgefdl.vnet.live.preflight", return_value={"ok": ok}), \
+                mock.patch("edgefdl.vnet.live.format_preflight", return_value=""), \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as cm:
+                cli.cmd_preflight(args)
+        return cm.exception.code
+
+    def test_exit_code_follows_the_result(self):
+        self.assertEqual(self._run(True), 0)
+        self.assertEqual(self._run(False), 1)
+
+
 class StateInferenceTest(unittest.TestCase):
     def setUp(self):
         self.t = topology.load(TOPO)

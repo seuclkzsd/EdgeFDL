@@ -36,7 +36,7 @@ from typing import Dict, List, Optional, Sequence
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from edgefdl.faults.injector import qdisc_cmds  # noqa: E402
-from edgefdl.faults.model import CATEGORY, FAULT_TYPES, TYPE_LABEL, Fault  # noqa: E402
+from edgefdl.faults.model import CATEGORY, FAULT_TYPES, Fault  # noqa: E402
 from edgefdl.robust import dual_cases, node_cases, scenario_fault  # noqa: E402
 
 SETS = ("normal", "single", "node", "dual")

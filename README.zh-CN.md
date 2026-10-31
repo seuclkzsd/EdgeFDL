@@ -99,7 +99,7 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 | `live` 后端黑盒验证 | `scripts/lab.sh build-torch`，然后 `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | 需要 Docker 特权容器；每 17 个场景约 30 分钟 |
 | 容器镜像端到端 | `tools/dev/ci.sh image` | 需要 Docker 与 compose 插件；构建镜像，通过 REST API 注入故障，检查告警与恢复，然后清理 |
 | 大屏回放 | `python tools/demo/record.py` | 一次实时运行，约 14 分钟 |
-| 单元测试 | `python -m unittest discover -s tests` | 176 个测试 |
+| 单元测试 | `python -m unittest discover -s tests` | 177 个测试 |
 
 流水线会在 `runs/v6/` 训练一个新模型，它与发布的模型并不相同；本页的数据都是用 `results/model.pt` 测得的，评估这个模型包可原样复现测试集结果。实验容器镜像基于 Debian 12，安装
 FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用本地 Debian 镜像源。
