@@ -4,21 +4,29 @@
 import contextlib
 import io
 import json
+import math
 import os
+import shlex
+import signal
+import socket
+import stat
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
+
+import numpy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from edgefdl import topology  # noqa: E402
 from edgefdl.faults.model import Fault  # noqa: E402
 from edgefdl.measure import probes  # noqa: E402
-from edgefdl.measure.model import MeasurePlan, PingStat, RoundResult  # noqa: E402
+from edgefdl.measure.model import DeepProbe, MeasurePlan, PingStat, RoundResult  # noqa: E402
 from edgefdl.vnet.base import make_backend  # noqa: E402
-from edgefdl.vnet.live import (LiveBackend, LiveExec, ReadOnlyError, StateInference, format_preflight,  # noqa: E402
-                               load_endpoints, preflight)
+from edgefdl.vnet.live import (LiveBackend, LiveExec, ReadOnlyError, StateInference, bundle_plan,  # noqa: E402
+                               format_preflight, limited, load_endpoints, preflight)
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 TOPO = os.path.join(ROOT, "configs", "demo_topology.yaml")
@@ -41,6 +49,8 @@ class FakeExec(LiveExec):
 
     def host(self, argv, check=False, timeout=None, quiet=False, input=None):
         self.calls.append(list(argv))
+        if argv[0] == "sh":                                                   # 经端点前缀 sh -c：命令行是最后一个参数
+            argv = shlex.split(argv[-1])
         ip = argv[-1]
         if argv[0] == "ping":
             return 0, (PING_LOST if ip in self.silent else PING).format(ip=ip)
@@ -234,9 +244,14 @@ class LiveLsdbTest(unittest.TestCase):
         self.assertTrue(ls and all(e.adj_up for e in ls.values()))
 
     def test_failed_reads_are_missing_not_all_links_down(self):
+        null_metric = lsdb_json(topology.load(TOPO)).replace('"tos0Metric": 10', '"tos0Metric": null')
+        self.assertIn("null", null_metric)
         for lsdb in ((1, "", "Permission denied"), (124, "", "超时"), (0, "not json", ""), (0, "{}", ""),
                      (0, '{"routerLinkStates": {"areas": {"0.0.0.0": []}}}', ""),
-                     (0, '{"areas": {"0.0.0.0": {"routerLinkStates": [{"lsId": "10.255.0.1"}]}}}', "")):
+                     (0, '{"areas": {"0.0.0.0": {"routerLinkStates": [{"lsId": "10.255.0.1"}]}}}', ""),
+                     (0, '{"routerLinkStates": {"areas": [1]}}', ""),            # 合法 JSON、结构不对：同样按缺测
+                     (0, '{"routerLinkStates": {"areas": {"0.0.0.0": [1]}}}', ""),
+                     (0, '{"routerLinkStates": {"areas": {"0.0.0.0": 1}}}', ""), (0, null_metric, "")):
             b, _ = make(lsdb_cmd="show", lsdb=lsdb)
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(b._read_lsdb(), {}, lsdb)
@@ -409,6 +424,300 @@ class StateInferenceTest(unittest.TestCase):
         self.assertEqual(ls["L4"].cost, 10.0)
 
 
+class FailingPingExec(FakeExec):
+    """ping 按 fail(argv) 返回失败：(返回码, 输出)，或抛出的异常。"""
+
+    def __init__(self, vantage, endpoints=None, fail=lambda argv: None):
+        super().__init__(vantage, endpoints)
+        self.fail = fail
+
+    def run(self, node, argv, **kw):
+        self.calls.append(list(argv))
+        r = self.fail(argv) if argv[0] == "ping" else None
+        if isinstance(r, Exception):
+            raise r
+        return r if r is not None else self.host(self.wrap(node, argv), **kw)
+
+
+def failing(fail, endpoints=None):
+    t = topology.load(TOPO)
+    ex = FailingPingExec(t.vantage, endpoints, fail)
+    return LiveBackend(t, MeasurePlan(interval_s=0.001), ex=ex, trace_workers=2), ex
+
+
+ALL_ENDS = {"core": "sh -c", "agg1": "sh -c", "acc1": "sh -c"}
+
+
+class LiveFailedProbeTest(unittest.TestCase):
+    """探测没跑成是缺测，不是"没有应答"：后者是链路中断的证据。"""
+
+    def test_ping_outside_rc_0_1_is_missing(self):
+        for r in ((2, "ping: cannot flood; minimal interval allowed for user is 200ms"), (124, ""), (127, ""), (255, ""),
+                  (1, "ssh: something printed by the prefix"), FileNotFoundError("nosuch")):
+            b, _ = failing(lambda argv: r)
+            st = b._ping("ems", "10.0.0.1", "t", 5, 0.2)
+            self.assertEqual((st.sent, st.recv), (0, 0), r)
+            self.assertNotEqual(st.loss, st.loss)                             # 丢包率未知（NaN），不是 100%
+
+    def test_ping_that_ran_and_got_no_answer_stays_no_answer(self):
+        b, _ = failing(lambda argv: (1, PING_LOST.format(ip=argv[-1])))
+        st = b._ping("ems", "10.0.0.1", "t", 5, 0.2)
+        self.assertEqual((st.sent, st.recv), (5, 0))
+
+    def test_state_inference_does_not_count_a_failed_ping_as_down(self):
+        b, _ = failing(lambda argv: (255, ""))
+        b.infer = StateInference(b.topo)
+        for i in range(3):
+            rr = b.measure_round(i)
+        self.assertTrue(all(e.adj_up for e in rr.lsdb.values()))
+
+    def test_deep_probe_stops_at_a_failed_ping_and_reports_it_as_not_run(self):
+        b, ex = failing(lambda argv: (2, "cannot flood"), ALL_ENDS)
+        with mock.patch.object(b, "_train_q", side_effect=AssertionError("不应再发包列")), \
+                mock.patch.object(b, "_iperf", side_effect=AssertionError("不应再打流")):
+            dp = b.deep_probe("L1")
+        self.assertEqual((dp.sent, dp.recv, dp.probe_bytes), (0, 0, 0))
+
+    def test_deep_probe_survives_a_missing_iperf3_on_the_ems(self):
+        b, _ = make(endpoints=ALL_ENDS)                                       # FakeExec.popen 抛 OSError，同缺 iperf3
+        dp = b.deep_probe("L15")
+        self.assertEqual((dp.sent, dp.recv), (5, 5))
+        self.assertNotEqual(dp.bw_mbps, dp.bw_mbps)                           # 带宽缺测，精测本身有效
+
+    def test_preflight_separates_failed_ping_from_silence(self):
+        b, _ = failing(lambda argv: (2, "ping: bad"))
+        rep = preflight(b)
+        self.assertEqual((rep["silent"], rep["answered"]), ([], 0))
+        self.assertEqual(len(rep["failed"]), rep["total"])
+        self.assertFalse(rep["ok"])
+        self.assertIn("ping 没能运行", format_preflight(rep))
+
+    def test_preflight_tests_the_short_interval_ping_of_deep_probes(self):
+        b, _ = failing(lambda argv: (2, "cannot flood") if argv[argv.index("-i") + 1] == "0.01" else None, ALL_ENDS)
+        with mock.patch.object(b, "_train_q", return_value=(100.0, 0, True)):
+            rep = preflight(b)
+        self.assertEqual(rep["silent"], [])
+        self.assertFalse(rep["ok"])
+        self.assertEqual(len([p for p in rep["problems"] if "0.01 s 间隔" in p]), len(rep["probe_links"]))
+
+    def test_preflight_checks_the_tools_of_an_ems_on_a_probe_link(self):
+        b, ex = make(endpoints=ALL_ENDS)
+        with mock.patch.object(ex, "have", side_effect=lambda c: c not in ("iperf3", "python3")), \
+                mock.patch.object(b, "_train_q", return_value=(100.0, 0, True)):
+            rep = preflight(b)
+        self.assertEqual(len([p for p in rep["problems"] if p.startswith("本机没有")]), 2)
+        b, ex = make(endpoints={"core": "sh -c"})
+        self.assertIn("L15", b._bw_cand())
+        with mock.patch.object(b, "_train_q", return_value=(100.0, 0, True)), \
+                mock.patch.object(ex, "host", side_effect=lambda argv, **kw: (127, "") if "iperf3" in " ".join(argv)
+                                  else FakeExec.host(ex, argv, **kw)):
+            rep = preflight(b)
+        self.assertEqual(len([p for p in rep["problems"] if "iperf3 或 timeout" in p]), 2)   # 网管本机和 core
+
+    def test_skip_silent_stops_when_nothing_answers(self):
+        from edgefdl import cli
+        b, _ = make(silent=[t.ip for t in topology.load(TOPO).targets()])
+        args = cli.argparse.Namespace(skip_silent=True)
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            cli._live_ready(b, args)
+        self.assertIn("没有任何地址应答", str(cm.exception.code))
+        b, _ = make(silent=["10.255.0.4"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            cli._live_ready(b, args)
+        self.assertEqual(b.skipped, ["lo.acc1"])
+
+    def test_skip_silent_does_not_hide_a_failed_ping(self):
+        from edgefdl import cli
+        b, _ = failing(lambda argv: (2, "ping: bad"))
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit):
+            cli._live_ready(b, cli.argparse.Namespace(skip_silent=True))
+        self.assertEqual(b.skipped, [])
+
+
+def stand_in(d, body):
+    """PATH 最前面放一个假 iperf3，只发生在本测试进程里，不发包。"""
+    p = os.path.join(d, "iperf3")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("#!/bin/sh\n" + body)
+    os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC)
+    return mock.patch.dict(os.environ, PATH=d + os.pathsep + os.environ["PATH"])
+
+
+class LiveEndpointProcessTest(unittest.TestCase):
+    """用真实子进程验证失败路径：设备上不留进程，一轮测量不被卡住。"""
+
+    def backend(self, endpoints=None):
+        return LiveBackend(topology.load(TOPO), MeasurePlan(interval_s=0.001), endpoints=endpoints)
+
+    def test_iperf_server_has_its_own_time_limit_and_a_failed_client_leaves_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            pid = os.path.join(d, "pid")
+            body = f'case "$*" in *-s*) echo $$ > {pid}; echo "Server listening on 5400"; exec sleep 30;; esac\nexit 3\n'
+            with stand_in(d, body):
+                b = self.backend()
+                with mock.patch.object(b.ex, "popen", wraps=b.ex.popen) as po:
+                    self.assertTrue(math.isnan(b._iperf("ems", "ems", "127.0.0.1", 5400, 10.0)[0]))
+            argv = po.call_args[0][1]
+            self.assertEqual(argv[0], "timeout")                              # 杀掉 ssh 不会结束对端进程，靠它自己的时限
+            self.assertEqual(argv[1], "10")                                   # docs/deployment.md 写明的上限
+            with open(pid, encoding="utf-8") as f:
+                n = int(f.read())
+            with self.assertRaises(ProcessLookupError):                       # 网管本机：SIGTERM 经 timeout 转发给 iperf3
+                for _ in range(40):
+                    os.kill(n, 0)
+                    time.sleep(0.05)
+
+    def test_client_waits_for_the_listening_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            mark = os.path.join(d, "client-ran")
+            with stand_in(d, f'case "$*" in *-s*) exec sleep 30;; esac\ntouch {mark}\n'):
+                b = self.backend()
+                b.READY_TIMEOUT_S = 0.2
+                t0 = time.time()
+                self.assertTrue(math.isnan(b._iperf("ems", "ems", "127.0.0.1", 5400, 10.0)[0]))
+                self.assertLess(time.time() - t0, 2.0)
+            self.assertFalse(os.path.exists(mark))
+
+    def test_iperf_rate_follows_the_estimate_on_live_only(self):
+        b, _ = make()
+        l = b.topo.link("L1")
+        self.assertEqual(b._iperf_want(l, 100.0), 100.0 * 0.3)                # 链路已劣化到 100 Mbit/s
+        self.assertEqual(b._iperf_want(l, float("nan")), l.bw_mbps * 0.3)     # 没有可信估计
+        self.assertEqual(b._iperf_want(l, 1e6), l.bw_mbps * 0.3)
+        vn = make_backend("netns", b.topo, MeasurePlan(), dry_run=True)
+        self.assertEqual(vn._iperf_want(l, 100.0), l.bw_mbps * 0.3)           # 虚拟后端不变，已发布结果不变
+
+    def test_unreachable_endpoint_does_not_stall_a_round(self):
+        b = self.backend({"agg1": "sh -c 'sleep 12' --", "acc1": "sh -c 'sleep 12' --"})
+        b.READY_TIMEOUT_S = 0.2
+        t0 = time.time()
+        bw, nb, clean = b._train("L4", 16, 1400) + (None,)
+        self.assertLess(time.time() - t0, 2.0)
+        self.assertNotEqual(bw, bw)
+
+    def test_lsdb_timeout_kills_the_whole_command(self):
+        with tempfile.TemporaryDirectory() as d:
+            pid = os.path.join(d, "pid")
+            rc = LiveExec("ems").shell(f"echo $$ > {pid}; sleep 31; echo done", 0.3)
+            self.assertEqual(rc[0], 124)
+            with open(pid, encoding="utf-8") as f:
+                n = int(f.read())
+        with self.assertRaises(ProcessLookupError):
+            os.killpg(n, signal.SIG_DFL)
+
+    def test_bad_prefixes(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "e.yaml")
+            for bad in ("endpoints: {agg1: \"ssh 'x\"}", "endpoints: {agg1: \"''\"}"):
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write(bad)
+                with self.assertRaises(ValueError):
+                    load_endpoints(p)
+        b = self.backend({"agg1": "/nonexistent/program"})
+        self.assertEqual(b._ping("agg1", "10.0.0.1", "t", 1, 0.2).sent, 0)    # 程序不存在：缺测，不是调用栈
+
+    def test_only_timeout_around_iperf3_passes(self):
+        ex = LiveExec("ems")
+        self.assertEqual(ex.wrap("ems", limited(["iperf3", "-v"], 5)), ["timeout", "5", "iperf3", "-v"])
+        for argv in (["timeout", "5", "sh", "-c", "reboot"], ["timeout", "-s9", "5", "iperf3"], ["timeout", "5"]):
+            with self.assertRaises(ReadOnlyError):
+                ex.wrap("ems", argv)
+
+    def test_bundle_cannot_raise_the_probe_load(self):
+        hostile = MeasurePlan(deep_iperf_s=3600.0, deep_iperf_rate_ratio=10.0, deep_ping_count=100000, ping_size=65000,
+                              ping_count=1000, bw_links_per_round=100, interval_s=0.001)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            p = bundle_plan(hostile)
+        self.assertEqual(p, MeasurePlan())
+        self.assertIn("deep_iperf_s", err.getvalue())
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(bundle_plan(MeasurePlan()), MeasurePlan())       # 正常模型包没有提示
+            p = bundle_plan(MeasurePlan(interval_s=10.0, window=8))
+        self.assertEqual((p.interval_s, p.window), (10.0, 8))                 # 更慢的周期和研判窗口仍取模型包
+        self.assertEqual(err.getvalue(), "")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(bundle_plan(MeasurePlan(interval_s=float("nan"), window=10 ** 9)), MeasurePlan())
+
+
+class CliMistakeTest(unittest.TestCase):
+    """常见错误给一行说明，不是调用栈；写不出结果在开始计算之前就知道。"""
+
+    def fails(self, *argv):
+        from edgefdl import cli
+        with self.assertRaises(SystemExit) as cm:
+            cli.main(list(argv))
+        self.assertIsInstance(cm.exception.code, str)
+        self.assertTrue(cm.exception.code.startswith("edgefdl: "), cm.exception.code)
+        return cm.exception.code
+
+    def test_missing_files_and_bad_port(self):
+        self.assertIn("no-such-model.pt", self.fails("serve", "--model", "no-such-model.pt", "--port", "0"))
+        self.assertIn("99999", self.fails("serve", "--model", "x", "--port", "99999"))
+        self.assertIn("nosuch.yaml", self.fails("topo", "nosuch.yaml"))
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "bad.yaml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write("name: [\n")
+            self.assertIn("bad.yaml", self.fails("topo", p))
+
+    def test_netns_without_root_names_the_lab(self):
+        from edgefdl.vnet.netns import NetnsBackend
+        with mock.patch.object(NetnsBackend, "__init__", side_effect=RuntimeError("命令失败(1): ip netns add")), \
+                mock.patch("os.geteuid", return_value=1000):
+            self.assertIn("lab.sh", self.fails("vnet", "up"))
+
+    def test_output_directories_exist_before_the_work_starts(self):
+        with tempfile.TemporaryDirectory() as d:
+            for i, argv in enumerate((("train", "--data", "nosuch.npz", "--baseline", "b.json", "--out"),
+                                      ("eval", "--model", "nosuch.pt", "--data", "nosuch.npz", "--json"))):
+                out = os.path.join(d, f"new{i}", "x")
+                self.fails(*argv, out)
+                self.assertTrue(os.path.isdir(os.path.dirname(out)))
+
+    def test_busy_port_stops_before_anything_is_measured_or_written(self):
+        with tempfile.TemporaryDirectory() as d, socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            logs = os.path.join(d, "logs")
+            msg = self.fails("serve", "--model", MODEL, "--port", str(s.getsockname()[1]), "--log-dir", logs)
+            self.assertIn("--port", msg)
+            self.assertFalse(os.path.exists(logs))
+
+    def test_names_are_validated_and_listed(self):
+        from edgefdl import cli
+        from edgefdl.compare import conditions
+        from edgefdl.robust import online_matrix
+        self.assertEqual({k for _, k in online_matrix(10, None)}, set(cli.ROBUST_KINDS))
+        self.assertEqual([c["name"] for c in conditions(10)], list(cli.COMPARE_CONDITIONS))
+        msg = self.fails("robust", "--model", "x", "--out", "y", "--kinds", "long,nonsense")
+        self.assertIn("nonsense", msg)
+        self.assertIn("node_back", msg)
+        msg = self.fails("compare", "--model", "x", "--out", "y", "--conditions", "nonsense")
+        self.assertIn("busy_hour_drift_1ms", msg)
+
+    def test_compare_robust_names_missing_items(self):
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import compare_robust
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "r.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(dict(config=dict(seed=1), online=dict(long={}, dual={}, node={})), f)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(compare_robust.main(["--multi", p, "--single", p]), 2)
+        self.assertIn("scen, single", err.getvalue())
+
+    def test_route_drift_on_a_host_link_is_refused(self):
+        from edgefdl.core.api import BadRequest, parse_fault
+        t = topology.load(TOPO)
+        for lid in ("L15", "L11"):
+            with self.assertRaises(BadRequest) as cm:
+                parse_fault(t, dict(type="route_drift", link=lid, value=3))
+            self.assertEqual(cm.exception.code, 400)
+            self.assertIn("路由器之间", str(cm.exception))
+        self.assertEqual(parse_fault(t, dict(type="route_drift", link="L4", value=3)).link, "L4")
+
+
 @unittest.skipUnless(os.path.exists(MODEL), "无模型")
 class LiveEngineTest(unittest.TestCase):
     """引擎按能力工作：不能精测就不调用精测，没有带宽估计就不下带宽结论。"""
@@ -440,6 +749,43 @@ class LiveEngineTest(unittest.TestCase):
                 if eng.alarm_seq:
                     break
         return eng.active
+
+    def test_a_probe_that_did_not_run_is_masked_not_read_as_no_answer(self):
+        from edgefdl.agent.ddqn import K, PROBE
+        with tempfile.TemporaryDirectory() as d:
+            eng, b = self.engine(d)
+            for _ in range(6):
+                eng.step()
+            pol, calls = eng.policy, []
+            pol.masked = []
+            act = pol.enc.lidx["L4"] * K + PROBE
+
+            def q(*a):                                                        # 先要精测 L4，其次判正常
+                r = -numpy.ones(pol.L * K + 1, dtype=numpy.float32)
+                r[pol.L * K], r[act] = 0.0, 1.0
+                return r
+
+            def probe(lid):
+                calls.append(lid)
+                return DeepProbe(lid, 0, 0, float("nan"), float("nan"), float("nan"))
+            with mock.patch.object(pol, "_q", side_effect=q):
+                res = pol.diagnose(list(eng.window), probe_fn=probe)
+            eng.stop()
+        self.assertEqual(calls, ["L4"])                                       # 只试一次
+        self.assertEqual((res["type"], res["probes"]), ("normal", []))
+
+    def test_recheck_keeps_the_alarm_when_the_probe_did_not_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng, b = self.engine(d)
+            a = dict(alarm_id="x", fault_type="bandwidth", link_id="L4")
+            eng.alarms, eng._trk, eng.noprobe = [a], {"x": dict(probed=0)}, []
+            with mock.patch.object(eng.backend, "deep_probe", create=True,
+                                   return_value=DeepProbe("L4", 0, 0, float("nan"), float("nan"), float("nan"))), \
+                    mock.patch.object(eng, "_clear", side_effect=AssertionError("不应恢复")):
+                eng._recheck_probe("x", "L4")
+            eng.alarms = []
+            eng.stop()
+        self.assertEqual(eng.extra_probes, 1)
 
     def test_masked_actions(self):
         from edgefdl.agent.ddqn import K

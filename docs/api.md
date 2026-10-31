@@ -47,8 +47,9 @@ them.
 - **Time.** In the API, `ts` fields are Unix time in seconds (float). In the CSV logs, `ts` is ISO 8601 local time
   with milliseconds and `epoch` is Unix time.
 - **IDs.** Links are `L1`, `L2`, … as in the topology file. Targets are `<link>.<device>` for an interface address
-  (`L6.agg2`), `lo.<device>` for a loopback and `nqa.<link>` for an NQA / IP SLA probe on a link that no EMS path
-  crosses. Alarm IDs are `A<start time>-<instance>-<sequence>`, for example `A1793319160-3f9c1a-0001`: the Unix time
+  (`L6.agg2`), `lo.<device>` for a loopback and `nqa.<link>` for the probe planned on a link that no EMS path crosses
+  (an NQA / IP SLA probe on the physical network, which EdgeFDL does not read yet; a ping from the end device on the
+  virtual backends, and on `live` if that device is in `--endpoints`). Alarm IDs are `A<start time>-<instance>-<sequence>`, for example `A1793319160-3f9c1a-0001`: the Unix time
   in seconds at which the engine started, 6 random hexadecimal digits drawn at start, and a 4-digit sequence number
   counting the alarms of that run. Runs started in the same second get different instance digits, so IDs stay
   unique across restarts and across engines writing to the same log directory.
@@ -340,8 +341,8 @@ curl -s 'http://127.0.0.1:8460/api/series?link=L1'
 }
 ```
 
-The targets whose address belongs to the link (its two interface addresses, plus `nqa.<link>` if the link has an NQA
-probe), each with up to the last 120 rounds: `rtt` is the average RTT in ms (`null` when no reply), `loss` is
+The targets whose address belongs to the link (its two interface addresses, plus `nqa.<link>` if the link has such a
+probe target), each with up to the last 120 rounds: `rtt` is the average RTT in ms (`null` when no reply), `loss` is
 0 to 1. An unknown or missing `link` returns `{}`.
 
 ## GET /api/export/{name}.csv
@@ -393,7 +394,7 @@ Accepted values:
 | `delay`, `jitter` | greater than 0 and at most 10,000 (ms) |
 | `loss` | greater than 0 and at most 1 |
 | `bandwidth` | greater than 0 and at most 1 |
-| `route_drift` | greater than 0, and the new cost `max(1, round(cost × value))` at most 65,535 (for a link of cost 10, a multiplier of at most 6553) |
+| `route_drift` | greater than 0, and the new cost `max(1, round(cost × value))` at most 65,535 (for a link of cost 10, a multiplier of at most 6553). Only on links between two routers |
 
 One fault per link: injecting on a link that already has a fault replaces it; faults on different links coexist.
 The model was trained on delay 5–100 ms, loss 0.05–0.9, jitter 5–50 ms, remaining bandwidth 0.05–0.5 and cost
@@ -414,6 +415,7 @@ read as `{}`). Errors of both endpoints, all with status 400 unless noted:
 | Unknown link | `未知链路 L99` |
 | `value` is `true`, `false`, `null` or not a number | `value 须为数值，收到 <value>` |
 | `value` is not finite, for example `"nan"` or `1e400` | `value 须为有限数值，收到 <value>` |
+| `route_drift` on a link with a host or the EMS at one end, which has no OSPF cost to drift | `route_drift 只适用于路由器之间的链路，L14 的一端是主机或网管` |
 | `value` out of range | for example `delay 的 value 须大于 0 且不超过 10000ms，收到 -40`, `loss 的 value 须大于 0 且不超过 1（丢包率），收到 5`, `route_drift 的 value（开销倍率）须大于 0，且使 L1 的开销（基线 10）不超过 65535，即倍率不超过 6553，收到 1000000.0` |
 
 The checks run in this order: request size, `Host`, `--no-inject` (403), `Origin` (403), `Content-Type` (415), JSON

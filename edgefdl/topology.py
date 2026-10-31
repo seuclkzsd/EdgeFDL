@@ -63,7 +63,8 @@ class Link:
 @dataclass
 class Target:
     """一个被周期探测的 IP。kind=if 为链路接口地址（链路级连通性的直接证据），lo 为环回，host 为主机，
-    nqa 为盲区链路上由端点设备发起的探测（华为/华三 NQA、思科 IP SLA，网管经 SNMP 读取结果）。"""
+    nqa 为盲区链路上由端点设备发起的探测（规划为华为/华三 NQA、思科 IP SLA）。虚拟后端由设备 ping 对端来模拟；
+    live 后端在发起端列入 --endpoints 时同样如此。读取设备原生探测的结果尚未实现（计划 0.3）。"""
     id: str
     ip: str
     node: str

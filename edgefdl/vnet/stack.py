@@ -12,6 +12,7 @@ import json
 import math
 import random
 import re
+import select
 import shlex
 import statistics
 import subprocess
@@ -130,6 +131,7 @@ class KernelStackBackend(Backend):
     TRAIN_PORT = 5300
     IPERF_PORT = 5400
     LINUX_IFNAMES = True                        # 接口名要用于 ip link / tc / FRR 时须是合法 Linux 接口名
+    READY_TIMEOUT_S: Optional[float] = None     # 等探测接收端就绪的上限（秒）；None 不设限（虚拟网络上进程总能起来）
 
     def __init__(self, topo: Topology, plan: Optional[MeasurePlan] = None,
                  use_frr: bool = True, workers: int = 48, trace_workers: int = 8,
@@ -281,11 +283,15 @@ class KernelStackBackend(Backend):
             return NAN, 0, False
         rx = self.ex.popen(dst, probes.train_recv_cmd(port, n, 2.0))
         try:
+            if self.READY_TIMEOUT_S is not None and not select.select([rx.stdout], [], [], self.READY_TIMEOUT_S)[0]:
+                raise subprocess.TimeoutExpired("train_recv", self.READY_TIMEOUT_S)     # 端点不可达：不能卡住整轮测量
             rx.stdout.readline()                    # 等接收端 bind 完成
             self.ex.run(src, probes.train_send_cmd(l.ip_of(dst), port, n, size), quiet=True, timeout=5)
             out, _ = rx.communicate(timeout=5)
         except subprocess.TimeoutExpired:
             rx.kill()
+            rx.wait()
+            rx.stdout.close()
             out = ""
         bw, clean = probes.parse_train(out)
         return (min(bw, l.bw_mbps * clip) if bw == bw else bw), n * (size + 42), clean
@@ -359,6 +365,23 @@ class KernelStackBackend(Backend):
         res.probe_bytes = int(nbytes)
         return res
 
+    def _iperf_want(self, l: Link, est: float) -> float:
+        """精测打流的请求速率（Mbps）。est 是本次包列容量估计，虚拟网络上不用它，按标称带宽限速。"""
+        return l.bw_mbps * self.plan.deep_iperf_rate_ratio
+
+    def _iperf(self, src: str, dst: str, dst_ip: str, port: int, want: float) -> Tuple[float, int]:
+        """src 向 dst 打一次 UDP 流，返回 (接收端吞吐 Mbps, 发送字节数)。"""
+        p = self.plan
+        srv = self.ex.popen(dst, probes.iperf3_server_cmd(port))
+        time.sleep(0.2)
+        _, out = self.ex.run(src, probes.iperf3_client_cmd(dst_ip, p.deep_iperf_s, want, port, udp=True),
+                             quiet=True, timeout=p.deep_iperf_s + 6)
+        try:
+            srv.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            srv.kill()
+        return probes.parse_iperf3(out)
+
     def deep_probe(self, link: str) -> DeepProbe:
         """链路精测：一端对另一端高频 ping；3 组 64 包包列测瓶颈容量（bw_mbps）；
         再以 UDP 按链路带宽 deep_iperf_rate_ratio 限速打流 deep_iperf_s 秒，测可用吞吐。
@@ -369,6 +392,9 @@ class KernelStackBackend(Backend):
         src, dst = (l.a, l.b) if self.topo.nodes[l.a].agent else (l.b, l.a)
         dst_ip = l.ip_of(dst)
         st = self._ping(src, dst_ip, link, p.deep_ping_count, p.deep_ping_interval_s)
+        if not st.sent:                         # ping 没能运行（live 的端点故障）：精测缺测，不再打流；sent=0 不是"无应答"
+            self.deep_extra[link] = {"iperf_mbps": NAN, "train_mbps": [], "bw_source": "none"}
+            return DeepProbe(link=link, sent=0, recv=0, rtt_avg=NAN, rtt_mdev=NAN, bw_mbps=NAN, probe_bytes=0)
         nbytes = st.sent * (p.ping_size + 42) * 2
         caps = []
         for k in range(3):
@@ -380,17 +406,8 @@ class KernelStackBackend(Backend):
         thr = NAN
         if not self.ex.dry_run and st.recv > 0 and p.deep_iperf_s > 0:
             port = self.IPERF_PORT + self._link_idx[link]
-            srv = self.ex.popen(dst, probes.iperf3_server_cmd(port))
-            time.sleep(0.2)
-            want = l.bw_mbps * p.deep_iperf_rate_ratio
-            _, out = self.ex.run(src, probes.iperf3_client_cmd(dst_ip, p.deep_iperf_s, want, port,
-                                                              udp=True),
-                                 quiet=True, timeout=p.deep_iperf_s + 6)
-            try:
-                srv.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                srv.kill()
-            thr, tx = probes.parse_iperf3(out)
+            want = self._iperf_want(l, bw)
+            thr, tx = self._iperf(src, dst, dst_ip, port, want)
             nbytes += tx
             if thr == thr and thr >= 0.85 * want and (bw != bw or bw < 0.85 * thr):
                 # 吞吐已跑满请求速率，容量不可能低于实测吞吐：包列全部被抖动打乱，或抖动远大于单包服务时间、

@@ -73,8 +73,10 @@ cross-site checks from a browser.
 **Model bundles.** A model bundle (`model.pt`) is loaded with `torch.load(..., weights_only=True)` (PyTorch 2.0 or
 newer), for both inference engines (`--engine torch` and `--engine numpy`). In this mode PyTorch restores only
 tensors and basic Python types; a bundle that contains other objects is refused with an error, so loading a bundle
-does not execute code from it. A bundle still determines the topology, the baseline and the weights the engine
-works with: deploy only bundles that you trained yourself or obtained from this repository or its GitHub Releases.
+does not execute code from it. A bundle still determines the topology, the baseline, the weights and, on the virtual
+backends, the measurement plan the engine works with: deploy only bundles that you trained yourself or obtained from
+this repository or its GitHub Releases. On the `live` backend a bundle cannot raise the probe load: only the decision
+window and an interval longer than the default are taken from its plan, and every other value is the default.
 Sample sets (`.npz`) are read with `numpy.load(..., allow_pickle=False)`. In scope: any bundle or sample set that
 executes code when loaded, and any way to make EdgeFDL load a bundle the operator did not choose.
 
@@ -98,9 +100,9 @@ and review files received from others before running the `netns` or `lxd` backen
 privileges. In scope: any topology field that leads to a command other than the documented ones, extra FRR or vtysh
 configuration lines, or files written outside these directories.
 
-**The `live` backend.** It runs on the EMS with the privileges of the user that started it, creates nothing and changes
-nothing. Its executor refuses every command except `ping`, `traceroute`, `iperf3` and the two packet-train scripts of
-`edgefdl/measure/probes.py`. Two inputs are shell text on purpose and come only from the command line of `serve`,
+**The `live` backend.** It runs on the EMS with the privileges of the user that started it and writes no device
+configuration. Its executor refuses every command except `ping`, `traceroute`, `iperf3` (also under `timeout`, which
+limits its run time) and the two packet-train scripts of `edgefdl/measure/probes.py`. Two inputs are shell text on purpose and come only from the command line of `serve`,
 `baseline` or `preflight`, never from the HTTP API or a model bundle: `--lsdb-cmd` runs through `sh -c`, and each
 command prefix of the `--endpoints` file receives one shell command line. Give them a read-only account. In scope: any
 way to make the backend send something other than these probes, or to reach these two inputs from the API, a topology
@@ -123,16 +125,19 @@ should be reported to their upstream projects; please tell us as well if EdgeFDL
 
 ## Data handling statement
 
-EdgeFDL is read-only towards production devices: it never logs in to devices and never writes device
-configuration. Vendor commands in alarms are advice for the operator and are not executed.
+EdgeFDL never writes device configuration. By default it does not log in to devices either. On the `live` backend it
+logs in only through commands you supply (`--lsdb-cmd`, `--endpoints`), with the account you give them, and
+`--endpoints` starts short-lived probe processes (`ping`, `iperf3`, `python3`) on the machines you list. Vendor commands
+in alarms are advice for the operator and are not executed.
 
 - **Reads:** the files given on the command line: topology (`--topo`), intake form (`--form`), device
   configurations (`--configs`), LLDP table (`--lldp`), model bundle (`--model`), sample sets (`--data`), baseline
   (`--baseline`), probe endpoints (`--endpoints`); with `intake --llm`, the topology images (PNG, JPEG) to be
   extracted. When psutil is installed, the process's own CPU and memory statistics.
 - **Writes:** the log directory of `serve` (`--log-dir`, default `runs/live`): `measure_log.csv`, `alarm_log.csv`,
-  their `*.schema.json` files and rotated archives (rotated at 200 MB); the output directories given with `--out`
-  or `-o` to `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust` and `pipeline`. The `netns` backend
+  their `*.schema.json` files and rotated archives (rotated at 200 MB); the paths given with `--out` or `-o` to
+  `topo`, `intake`, `baseline`, `gen`, `train`, `bench`, `robust`, `compare` and `pipeline`, with `--json` to `eval`
+  and `preflight`, and with `--raw-csv` to `gen`, creating missing parent directories. The `netns` backend
   writes FRR configuration and PID files under `/etc/frr/efl-<device>/` and `/var/run/frr/efl-<device>/`; the `lxd`
   backend writes FRR files to a temporary staging directory, pushes them into its containers and removes the
   directory (`python -m edgefdl.vnet.lxd --stage-dir DIR` keeps them in `DIR` instead).
@@ -141,11 +146,16 @@ configuration. Vendor commands in alarms are advice for the operator and are not
   shipped in `edgefdl/measure/probes.py`, the FRR daemons `zebra` and `ospfd`, `vtysh`, and for `lxd` the `lxc`
   client (which runs `systemctl restart frr` inside the containers). With `live`: `ping` and `traceroute`; with
   `--lsdb-cmd`, that command through `sh -c`; with `--endpoints`, the listed command prefixes around `ping`, `iperf3`
-  and the packet-train scripts.
+  under `timeout`, and the packet-train scripts. The EMS counts as an endpoint: on a measured link that ends at the EMS,
+  `iperf3` under `timeout` and `python3 -c` with the packet-train scripts run on the EMS itself, without a prefix.
 - **Network:** EdgeFDL sends only the measurement probes of its measurement plan to the targets of the configured
   topology: ICMP echo (5 packets per target per round), ICMP traceroute, short UDP packet trains, and, for a deep
   probe of a single link, 100 pings at 10 ms intervals plus a 1 s iperf3 run at no more than 30% of the link's
-  bandwidth. It listens on the HTTP port of `serve`. It contacts other hosts only when the operator configures
+  bandwidth. On `live` that is 30% of the lower of the nominal bandwidth and the packet-train estimate of the same
+  probe; if the trains give no trusted estimate, 30% of the nominal bandwidth. It listens on the HTTP port of `serve`.
+  With `--endpoints`, the receiving end of a measured link, which can be the EMS, also listens for a few seconds during
+  a probe: UDP 5300+ for a packet train, TCP and UDP 5400+ for `iperf3`, whose server stops after 10 s at the latest
+  even if no client arrives. It contacts other hosts only when the operator configures
   them: the Syslog (UDP) and Webhook (HTTP POST, sent with Python's `urllib`, which honours the standard proxy
   environment variables) sinks given with `--sinks`, and the OpenAI-compatible endpoint given with `intake --llm`,
   which receives the base64-encoded image. There is no telemetry and no update check.
@@ -166,5 +176,5 @@ configuration. Vendor commands in alarms are advice for the operator and are not
 | Container of [`compose.yaml`](compose.yaml) (`sim` backend) | None inside the container: UID 10001, read-only root file system, all capabilities dropped, `no-new-privileges`; it writes only to the `/data` volume and `/tmp`. Starting it needs access to Docker |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`) to create namespaces, configure `tc` and run FRR; `scripts/lab.sh` runs it inside a privileged container started with `--network none` |
 | `lxd` backend | A member of the `lxd` group |
-| `live` backend | An ordinary user that may run `ping` and `traceroute -I` (`CAP_NET_RAW` on `traceroute`, see [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network)) |
+| `live` backend | An ordinary user that may run `ping` and `traceroute -I` (`CAP_NET_RAW` on `traceroute`, see [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network)); with `--endpoints`, deep probes also need `ping` at 10 ms intervals on the sending end, which older `iputils` allow only with `CAP_NET_RAW` or root |
 | `vnet up` / `vnet down` with `--dry-run` (`netns` or `lxd`) | An ordinary user: the command sequence is printed and nothing is executed (the `lxd` dry run generates the FRR files in a temporary directory and removes it). `python -m edgefdl.vnet.lxd` prints the complete LXD deployment sequence the same way |

@@ -470,6 +470,8 @@ class Engine:
             self._trk[aid]["probed"] = self.round
             self.extra_probes += 1
         dp = self._probe(lid)
+        if not dp.sent:                           # 精测没能运行（live 的端点故障）：无从判断，告警保持
+            return
         d = self.enc.deep(dp)
         if a["fault_type"] == "loss":             # 精测丢包按链路两端设备的背景丢包率放宽（ICMP 限速同样作用于精测）
             ends = [ti for ti, t in enumerate(self.enc.targets) if t.link == lid]   # 精测应答来自链路两端设备
