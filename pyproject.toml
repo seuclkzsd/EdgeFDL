@@ -45,3 +45,11 @@ version = {attr = "edgefdl.__version__"}
 
 [tool.setuptools.package-data]
 edgefdl = ["core/web/*.html"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+# 只开能指向真实缺陷的规则（未定义名、未用导入、语法错误、错误的比较写法）；排版跟随周围代码
+select = ["F", "E9", "W6", "E711", "E712", "E713", "E714", "E721", "E722"]
