@@ -42,7 +42,7 @@ python -m edgefdl --version                                           # edgefdl 
 - `pip install -e .` additionally installs an `edgefdl` command (`edgefdl --version`). Keep working from the
   checkout: the demo topology (`configs/`) and the released model (`results/`) live in the repository, not in the
   Python package.
-- Check the installation with the unit tests (204 tests, about 30 s):
+- Check the installation with the unit tests (205 tests, about 30 s):
 
   ```bash
   python -m unittest discover -s tests
