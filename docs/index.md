@@ -5,8 +5,8 @@ when an anomaly persists, raises one alarm per fault that names the faulty link 
 and vendor-specific remediation steps. The model behind it is trained for each network on an equivalent virtual
 network, without production fault data.
 
-These pages are in English. The command-line messages, the CLI help and the web dashboard are in Chinese, the language
-of its first users; the pages translate the labels you will see.
+These pages are in English. The command-line messages, the CLI help and the web dashboard are in Chinese;
+the pages translate the labels you will see.
 
 ## Where to start
 

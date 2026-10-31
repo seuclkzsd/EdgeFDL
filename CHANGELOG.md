@@ -6,6 +6,11 @@ All user-visible changes to EdgeFDL are recorded in this file. The format follow
 
 ## [Unreleased]
 
+### Fixed
+
+- The message for a missing default topology gives advice that also works with an installed package: name a
+  topology file, or run `python -m edgefdl` from the checkout.
+
 ## [0.1.2] - 2026-10-31
 
 Patch release for packaging and documentation. No code of the engine, the training or the evaluation changed, and the
@@ -23,7 +28,6 @@ CPU, memory and run time vary with the machine's load).
 ### Changed
 
 - The release notes list the demo video among the assets.
-- The demo video's narration states the numeric goals as design targets, in the same words as the slides.
 - The suite has 72 tests.
 
 ## [0.1.1] - 2026-10-31

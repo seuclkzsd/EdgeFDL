@@ -38,7 +38,7 @@ Issues suitable for first-time contributors carry the label `good first issue`.
   fallback today). A new vendor is one entry with the same keys; see "Adding a vendor command template" below.
   Network engineers can submit these as a pull request or paste them into a feature request.
 - **Translations.** The dashboard ([edgefdl/core/web/index.html](edgefdl/core/web/index.html)), the CLI help and the
-  code comments are in Chinese because the first users are Chinese-speaking operators. English translations of
+  code comments are in Chinese. English translations of
   UI strings, help texts and comments are welcome; an English/Chinese UI is planned in [ROADMAP.md](ROADMAP.md).
 - **Documentation**: corrections, clearer explanations and examples for [docs/](docs/index.md).
 

@@ -369,7 +369,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if getattr(args, "topo", None) == DEFAULT_TOPO and not os.path.isfile(DEFAULT_TOPO):
         raise SystemExit("edgefdl: 找不到默认拓扑 configs/demo_topology.yaml（它在源码仓库中，不随 Python 包安装）。"
-                         "请在仓库目录下运行，或在命令行指定拓扑文件")
+                         "请在命令行指定拓扑文件，或在仓库目录下用 python -m edgefdl 运行")
     args.fn(args)
 
 
