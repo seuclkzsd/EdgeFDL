@@ -50,6 +50,8 @@ def norm(name: str) -> str:
 
 def rank_id(lid: str, exception: str = "") -> int:
     x = lid.lower()
+    if exception and x in PERMISSIVE_IDS:                  # 例外只增加许可，如 Apache-2.0 WITH LLVM-exception
+        return PERMISSIVE
     if exception or x.endswith("-with-gcc-exception"):     # GCC 运行库例外等：不传染链接它的程序
         return WEAK if x.startswith(STRONG_PREFIX) and ("exception" in exception.lower() or "exception" in x) else UNKNOWN
     if x in PERMISSIVE_IDS:

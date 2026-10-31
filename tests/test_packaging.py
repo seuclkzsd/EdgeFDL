@@ -37,7 +37,7 @@ class LicenseCheckTest(unittest.TestCase):
                            ("Apache-2.0 OR GPL-2.0-only", L.PERMISSIVE), ("MPL-2.0", L.WEAK),
                            ("MIT AND LGPL-2.1-or-later", L.WEAK), ("GPL-3.0-or-later", L.STRONG),
                            ("MIT AND AGPL-3.0-only", L.STRONG), ("(MIT OR GPL-2.0-only) AND GPL-3.0-only", L.STRONG),
-                           ("GPL-3.0-or-later WITH GCC-exception-3.1", L.WEAK), ("LicenseRef-Proprietary", L.UNKNOWN),
+                           ("GPL-3.0-or-later WITH GCC-exception-3.1", L.WEAK), ("Apache-2.0 WITH LLVM-exception AND BSL-1.0", L.PERMISSIVE), ("LicenseRef-Proprietary", L.UNKNOWN),
                            ("Proprietary software of NVIDIA", L.UNKNOWN), ("MIT AND (", L.UNKNOWN), ("", L.UNKNOWN)):
             self.assertEqual(L.rank_expression(expr), want, expr)
 
