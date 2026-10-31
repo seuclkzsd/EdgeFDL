@@ -363,6 +363,30 @@ class StateInferenceTest(unittest.TestCase):
         self.assertTrue(ls["L4"].adj_up)
         self.assertEqual(sorted(l for l, e in ls.items() if e.cost != self.t.link(l).cost), ["L4"])
 
+    def test_equal_cost_flip_of_a_subnet_is_not_a_cost_change(self):
+        # L3 网段从 core 经 agg1、agg2 等价：其两端地址的路径可以在两边之间换，这不是开销变化
+        ts = {t.id: t for t in self.t.targets() if t.kind != "nqa"}
+        base = {i: tuple(self.t.route_to_target(self.t.vantage, t)[0][1:]) for i, t in ts.items()}
+        self.inf.set_reference(dict(base, **{"L3.agg1": ("core", "agg1"), "L3.agg2": ("core", "agg1", "agg2")}))
+        flip = dict(base, **{"L3.agg1": ("core", "agg2", "agg1"), "L3.agg2": ("core", "agg2")})
+        for _ in range(3):
+            ls = self.inf.update(rr_of(self.t, paths=flip))
+        self.assertEqual([l for l, e in ls.items() if e.cost != self.t.link(l).cost], [])
+
+    def test_paths_from_an_outage_are_dropped_when_the_link_returns(self):
+        ts = {t.id: t for t in self.t.targets() if t.kind != "nqa"}
+        base = {i: tuple(self.t.route_to_target(self.t.vantage, t)[0][1:]) for i, t in ts.items()}
+        self.inf.set_reference(base)
+        down = {i: tuple(self.t.route_to_target(self.t.vantage, t, {"L1"})[0][1:]) for i, t in ts.items()}
+        dead = ("L1.core", "L1.agg1")
+        for _ in range(3):
+            ls = self.inf.update(rr_of(self.t, dead, paths=down))
+        self.assertFalse(ls["L1"].adj_up)
+        ls = self.inf.update(rr_of(self.t))                                   # 恢复，还没重新测到路径
+        self.assertEqual(self.inf.cur, {})
+        ls = self.inf.update(rr_of(self.t))
+        self.assertTrue(all(e.adj_up and e.cost == self.t.link(l).cost for l, e in ls.items()))
+
     def test_no_reference_no_cost_inference(self):
         ls = self.inf.update(rr_of(self.t, paths={"L4.acc1": ("core", "agg2", "acc1")}))
         self.assertEqual(ls["L4"].cost, 10.0)

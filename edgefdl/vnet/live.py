@@ -112,8 +112,9 @@ class StateInference:
     results/live_missing.json）。这里是固定规则，只用实测的 ping 与 traceroute，连续 confirm 轮一致才算数：
       · 链路中断：链路两端的接口地址都不应答（网管上联只有对端地址），而至少一端设备还有别的地址应答——
         这排除了"一段网络整体不可达时，其中的链路全被判为中断"；
-      · 开销变化：实测路径偏离参照路径时，在路径离开或新进入的路由器互联链路上试 DRIFT_FACTORS 各倍率，取与全部
-        实测路径最一致的（链路, 倍率）。没有候选能解释至少 min_match 比例的改道目标时不推断。"""
+      · 开销变化：至少 2 个目标的实测路径换到了开销不同的路径（等价路径之间换不算）时，在路径离开或新进入的路由器
+        互联链路上试 DRIFT_FACTORS 各倍率，取与全部实测路径最一致的（链路, 倍率）。没有候选能解释至少 min_match
+        比例的改道目标时不推断。"""
 
     def __init__(self, topo: Topology, confirm: int = 2, min_match: float = 0.6):
         self.topo, self.confirm, self.min_match = topo, confirm, min_match
@@ -124,6 +125,7 @@ class StateInference:
         self.cur: Dict[str, Tuple[str, ...]] = {}   # 各目标最近一次测到的路径（traceroute 按预算轮转，不是每轮都有）
         self.dead: Dict[str, int] = {l.id: 0 for l in topo.links}
         self.last_cost, self.cost_n = None, 0
+        self.was_down: set = set()
         self._cache: dict = {}
 
     def set_reference(self, paths: Dict[str, Tuple[str, ...]]) -> None:
@@ -151,6 +153,13 @@ class StateInference:
                 down.add(l.id)
         return down
 
+    def _to_target(self, t: Target, path: Sequence[str]) -> float:
+        """按拓扑开销算这条路径到目标的总开销。接口地址按其网段计：网段开销只算一次，从网段哪一端进入都一样，
+        所以到同一网段的等价路径开销相等（这类目标的路径本来就可能在两端之间换）。"""
+        ls = self._links_of(path)
+        own = self.topo.link(t.link).cost if t.link else 0.0
+        return sum(self.topo.link(l).cost for l in ls if l != t.link) + own
+
     def _route(self, t: Target, down: set, cost: Dict[str, float]) -> Tuple[str, ...]:
         return tuple(self.topo.route_to_target(self.topo.vantage, t, set(down), cost, self._cache)[0][1:])
 
@@ -160,8 +169,8 @@ class StateInference:
             if ps is not None and ps.path and t.id in self.ref:
                 self.cur[t.id] = ps.path
         cur = self.cur
-        moved = [t for t in self.targets if t.id in cur and cur[t.id] != self.ref[t.id]]
-        if len(moved) < 2:                      # 单个目标改道可能只是等价多路径换了一条
+        moved = [t for t in self.targets if t.id in cur and self._to_target(t, cur[t.id]) != self._to_target(t, self.ref[t.id])]
+        if len(moved) < 2:                      # 等价路径之间换一条不算改道；单个目标改道也可能只是测量偶然
             return None
         explained = sum(cur[t.id] == self._route(t, down, {}) for t in moved)
         if explained >= self.min_match * len(moved):        # 已推断的中断足以解释这些改道
@@ -188,6 +197,9 @@ class StateInference:
 
     def update(self, rr: RoundResult) -> Dict[str, LsdbEntry]:
         down = self._down(rr)
+        if self.was_down - down:                # 链路恢复：中断期间测到的绕行路径已经过时
+            self.cur.clear()
+        self.was_down = down
         c = self._cost(rr, down) if self.ref else None
         self.cost_n = self.cost_n + 1 if c is not None and c == self.last_cost else (1 if c is not None else 0)
         self.last_cost = c

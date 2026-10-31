@@ -14,6 +14,7 @@ the pages translate the labels you will see.
 |---|---|
 | See it work (about 10 minutes, no network hardware) | [Quick start](quickstart.md) → [Results](results.md) |
 | Prepare it for your own network | [Quick start](quickstart.md) → [Deployment](deployment.md) → [REST API and integrations](api.md) |
+| Run it on a real network, read-only | [Deployment, connecting to a real network](deployment.md#connecting-to-a-real-network) |
 | Connect it to a monitoring or ticketing system | [REST API and integrations](api.md) → [Deployment, section 5](deployment.md#5-integrations) |
 | Understand how it works | [Architecture](architecture.md) → [Algorithms](algorithms.md) → [Results](results.md) |
 | Compare it with other tools | [Comparison](comparison.md) → [Results](results.md) |

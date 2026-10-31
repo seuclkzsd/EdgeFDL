@@ -160,7 +160,7 @@ def wait_for(cond, timeout: float, step: float = 1.0):
     return None
 
 
-def merge(paths: List[str], out: str):
+def merge(paths: List[str], out: str, note: str = ""):
     """合并各模式、各分片的原始结果；汇总只做计数。"""
     docs = [json.load(open(p, encoding="utf-8")) for p in paths]
     modes: Dict[str, dict] = {}
@@ -184,6 +184,8 @@ def merge(paths: List[str], out: str):
         m["summary"] = dict(scenarios=len(rows), correct=sum(r["type_ok"] and r["link_ok"] for r in rows),
                             by_type=by, false_alarms_idle=sum(r.get("false_alarms_idle", 0) for r in m["runs"]))
     doc = dict(conditions=docs[0]["conditions"], modes=modes)
+    if note:
+        doc["note"] = note
     with open(out, "w", encoding="utf-8") as f:
         json.dump(doc, f, ensure_ascii=False, indent=1)
     print("写出", out)
@@ -256,9 +258,10 @@ def main():
     ap.add_argument("--work", default="runs/lab/live", help="日志目录（仓库内）")
     ap.add_argument("--out", default="runs/lab/live_blackbox.json")
     ap.add_argument("--merge", nargs="*", help="只合并这些结果文件到 --out，不跑实验")
+    ap.add_argument("--note", default="", help="合并时写入的说明")
     a = ap.parse_args()
     if a.merge is not None:
-        return merge(a.merge, a.out)
+        return merge(a.merge, a.out, a.note)
     if a.trace_check:
         return trace_check(a)
 
