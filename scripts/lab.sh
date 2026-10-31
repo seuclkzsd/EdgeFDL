@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
-# 实验容器管理：build | shell | smoke | run <cmd...>
+# 实验容器管理：build | build-torch | shell | smoke | run <cmd...>
 # 容器以 --privileged 运行（netns / tc / FRR 需要 CAP_NET_ADMIN 与 CAP_SYS_ADMIN），
 # 仓库挂载到 /work；宿主机无需 sudo，只需在 docker 组。
 # 容器带 --rm，只有仓库目录（/work）里的文件会保留：输出请写到仓库内，如
@@ -16,6 +16,9 @@ RUN=(docker run --rm --privileged --network none -v "$PWD":/work -w /work
 case "${1:-shell}" in
   build) NO_PROXY='*' no_proxy='*' docker build --network host \
            --build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" -t "$IMG" scripts/lab ;;
+  build-torch) docker build --network host --build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" \
+           --build-arg PIP_INDEX="${EDGEFDL_PIP_INDEX:-https://pypi.org/simple}" \
+           -t edgefdl-lab-torch:latest -f scripts/lab/Dockerfile.torch scripts/lab ;;
   shell) "${RUN[@]}" -it "$IMG" bash ;;
   smoke) shift; "${RUN[@]}" "$IMG" python3 scripts/netns_smoke.py "$@" ;;
   run)   shift
@@ -26,5 +29,5 @@ case "${1:-shell}" in
            'touch /tmp/.lab-t0; "$@"; rc=$?
             find /work -xdev -user 0 -newer /tmp/.lab-t0 -exec chown -h "$HOST_UID:$HOST_GID" {} + 2>/dev/null
             exit $rc' lab "$@" ;;
-  *) echo "用法: $0 build|shell|smoke|run <cmd>"; exit 1 ;;
+  *) echo "用法: $0 build|build-torch|shell|smoke|run <cmd>"; exit 1 ;;
 esac

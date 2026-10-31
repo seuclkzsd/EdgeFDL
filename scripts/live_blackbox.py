@@ -35,10 +35,27 @@ from edgefdl.faults.generator import drift_allowed, drift_effective  # noqa: E40
 from edgefdl.faults.injector import Cmd, apply_cmds, revert_cmds  # noqa: E402
 from edgefdl.faults.model import DRIFT_FACTORS, Fault  # noqa: E402
 from edgefdl.topology import load  # noqa: E402
+from edgefdl.vnet import frr  # noqa: E402
 
 PREFIX = "efl-"
 LSDB_CMD = "vtysh -N efl-core -c 'show ip ospf database router json'"
 ORDER = ("link_down", "delay", "loss", "jitter", "bandwidth", "route_drift")
+ROUND_PROBE = """
+import json, sys, time
+from edgefdl.measure.model import MeasurePlan
+from edgefdl.topology import load
+from edgefdl.vnet.live import LiveBackend
+b = LiveBackend(load(sys.argv[1]), MeasurePlan(), trace_per_round=int(sys.argv[2]))
+out = []
+for i in range(int(sys.argv[3])):
+    t0 = time.time()
+    r = b.measure_round(i)
+    dt = time.time() - t0
+    out.append(dict(round_s=round(dt, 2), traced=len(b._trace_list()) if b.trace_per_round else len(r.pings),
+                    paths_complete=sum(1 for p in r.pings.values() if p.path), probe_bytes=r.probe_bytes))
+    time.sleep(max(0.0, 5 - dt))
+print(json.dumps(out))
+"""
 
 
 def sh(argv: List[str], check: bool = True, timeout: Optional[float] = 30) -> str:
@@ -87,8 +104,31 @@ def stamp(r: Dict) -> float:
     return float(r.get("epoch") or time.mktime(time.strptime(r["ts"].split(".")[0], "%Y-%m-%dT%H:%M:%S")))
 
 
-def scenarios(topo, links: List[str], types: List[str]) -> List[Fault]:
-    out = []
+class DeviceDown:
+    """设备宕机：一台路由器的全部链路同时中断。"""
+    type, value = "node_down", 1.0
+
+    def __init__(self, topo, node: str):
+        self.node = node
+        self.links = [l.id for l in topo.links if node in (l.a, l.b)]
+        self.link = "/".join(self.links)
+        self.label = f"设备 {node} 宕机"
+
+
+def apply_of(topo, f) -> List[Cmd]:
+    if isinstance(f, DeviceDown):
+        return [c for lid in f.links for c in apply_cmds(topo, Fault("link_down", lid))]
+    return apply_cmds(topo, f)
+
+
+def revert_of(topo, f) -> List[Cmd]:
+    if isinstance(f, DeviceDown):
+        return [c for lid in f.links for c in revert_cmds(topo, Fault("link_down", lid))]
+    return revert_cmds(topo, f)
+
+
+def scenarios(topo, links: List[str], types: List[str], devices: List[str]) -> List:
+    out: List = []
     for lid in links:
         for t in types:
             if t == "route_drift":
@@ -99,7 +139,7 @@ def scenarios(topo, links: List[str], types: List[str]) -> List[Fault]:
                     out.append(c[0])
             else:
                 out.append(Fault(t, lid, SCENARIO_VALUE[t]))
-    return out
+    return out + [DeviceDown(topo, n) for n in devices]
 
 
 def endpoints_file(topo, path: str):
@@ -133,7 +173,7 @@ def merge(paths: List[str], out: str):
     for m in modes.values():
         rows = m["rows"]
         by: Dict[str, dict] = {}
-        for t in ORDER:
+        for t in ORDER + ("node_down",):
             rs = [r for r in rows if r["type"] == t]
             if rs:
                 ta = [r["time_to_alarm_s"] for r in rs if r["time_to_alarm_s"] is not None]
@@ -149,13 +189,61 @@ def merge(paths: List[str], out: str):
     print("写出", out)
 
 
+def trace_check(a):
+    """ICMP 差错限速对 traceroute 的影响：路由器限速开 / 关 × 全量 / 按预算轮转，各测若干轮。
+    另把一条链路改回 OSPF 广播网络类型，核对真实 FRR 输出的 LSDB 能否解析。"""
+    topo = load(a.topo)
+    sh([sys.executable, "-m", "edgefdl", "vnet", "up", "--backend", "netns", "--topo", a.topo], timeout=120)
+    res: Dict = dict(conditions=dict(network="demo topology on network namespaces, FRR OSPF, tc netem + tbf",
+                                     rounds_per_cell=a.check_rounds, targets=36, round_interval_s=5))
+    ems = ["ip", "netns", "exec", PREFIX + "ems", sys.executable, "-c", ROUND_PROBE, a.topo]
+    try:
+        wait_for(lambda: subprocess.run(ems[:-3] + ["-m", "edgefdl", "preflight", "--topo", a.topo, "--trace-per-round",
+                                                    "0"], stdout=subprocess.DEVNULL).returncode == 0, 90, 2)
+        cells = []
+        for limit in (0, 1000):
+            for n, nd in topo.nodes.items():
+                if nd.transit:
+                    sh(["ip", "netns", "exec", PREFIX + n, "sysctl", "-qw", f"net.ipv4.icmp_ratelimit={limit}"])
+            for budget in (0, 5):
+                rows = json.loads(sh(ems + [str(budget), str(a.check_rounds)], timeout=120 + a.check_rounds * 30))
+                c = dict(icmp_ratelimit_ms=limit, trace_per_round=budget or "all", rounds=rows)
+                c["mean_round_s"] = round(sum(r["round_s"] for r in rows) / len(rows), 2)
+                c["mean_paths_complete"] = round(sum(r["paths_complete"] for r in rows) / len(rows), 1)
+                c["mean_probe_bytes"] = round(sum(r["probe_bytes"] for r in rows) / len(rows))
+                cells.append(c)
+                print(limit, budget, c["mean_round_s"], c["mean_paths_complete"], c["mean_probe_bytes"], flush=True)
+        res["cells"] = cells
+        # 广播网络类型：把 L4 两端改回 FRR 默认的 broadcast，再读 LSDB
+        l = topo.link("L4")
+        for n, ifn in ((l.a, l.a_if), (l.b, l.b_if)):
+            sh(["vtysh", "-N", PREFIX + n, "-c", "configure terminal", "-c", f"interface {ifn}",
+                "-c", "ip ospf network broadcast"])
+        time.sleep(15)
+        from edgefdl.vnet.stack import parse_lsdb
+        js = json.loads(sh(["vtysh", "-N", PREFIX + "core", "-c", "show ip ospf database router json"]))
+        kinds = sorted({x.get("linkType") for a_ in js["routerLinkStates"]["areas"].values() for lsa in a_
+                        for x in (lsa.get("routerLinks") or {}).values()})
+        e = parse_lsdb(js, topo)["L4"]
+        res["broadcast_link"] = dict(link="L4", link_types_in_lsdb=kinds, parsed_adj_up=e.adj_up, parsed_cost=e.cost)
+        print(res["broadcast_link"], flush=True)
+    finally:
+        sh([sys.executable, "-m", "edgefdl", "vnet", "down", "--backend", "netns", "--topo", a.topo], check=False)
+    with open(a.out, "w", encoding="utf-8") as f:
+        json.dump(res, f, ensure_ascii=False, indent=1)
+    print("写出", a.out)
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--trace-check", action="store_true", help="只测 ICMP 限速对 traceroute 的影响，写到 --out")
+    ap.add_argument("--check-rounds", type=int, default=8)
     ap.add_argument("--mode", default="ping", choices=["ping", "infer", "lsdb", "ends"])
     ap.add_argument("--model", default="results/model.pt")
     ap.add_argument("--topo", default="configs/demo_topology.yaml")
     ap.add_argument("--links", default="L1,L6,L12")
     ap.add_argument("--types", default=",".join(ORDER))
+    ap.add_argument("--devices", default="", help="另加设备宕机场景，逗号分隔")
     ap.add_argument("--learn-rounds", type=int, default=40)
     ap.add_argument("--interval", type=float, default=5.0)
     ap.add_argument("--alarm-timeout", type=float, default=120.0, help="等待告警的上限（s）")
@@ -171,10 +259,13 @@ def main():
     a = ap.parse_args()
     if a.merge is not None:
         return merge(a.merge, a.out)
+    if a.trace_check:
+        return trace_check(a)
 
     t00 = time.time()
     topo = load(a.topo)
-    faults = scenarios(topo, a.links.split(","), a.types.split(","))
+    faults = scenarios(topo, [x for x in a.links.split(",") if x], [x for x in a.types.split(",") if x],
+                       [x for x in a.devices.split(",") if x])
     work = os.path.join(a.work, a.mode + "-" + a.links.replace(",", "_"))
     logs = os.path.join(work, "logs")
     os.makedirs(work, exist_ok=True)
@@ -250,7 +341,7 @@ def main():
             seen = len(al)
             print(f"== [{i}/{len(faults)}] 注入 {f.label}", flush=True)
             t_inj = time.time()
-            do_cmds(apply_cmds(topo, f))
+            do_cmds(apply_of(topo, f))
 
             def raised():
                 alive()
@@ -259,16 +350,16 @@ def main():
 
             new = wait_for(raised, a.alarm_timeout) or []
             first = new[0] if new else None
-            do_cmds(revert_cmds(topo, f))
+            do_cmds(revert_of(topo, f))
             t_rev = time.time()
-            if f.type == "link_down":                # 接口 down 时内核清掉了经它的默认路由
-                for n in (topo.link(f.link).a, topo.link(f.link).b):
-                    if not topo.nodes[n].transit:
-                        from edgefdl.vnet import frr
-                        gw = frr.gateway_of(topo, n)
-                        if gw:
-                            sh(["ip", "netns", "exec", PREFIX + n, "ip", "route", "replace", "default",
-                                "via", gw[1], "dev", gw[0]], check=False)
+            if f.type in ("link_down", "node_down"):  # 接口 down 时内核清掉了经它的默认路由
+                for lid in f.link.split("/"):
+                    for n in (topo.link(lid).a, topo.link(lid).b):
+                        if not topo.nodes[n].transit:
+                            gw = frr.gateway_of(topo, n)
+                            if gw:
+                                sh(["ip", "netns", "exec", PREFIX + n, "ip", "route", "replace", "default",
+                                    "via", gw[1], "dev", gw[0]], check=False)
 
             def cleared():
                 alive()

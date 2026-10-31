@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# 实验镜像加 PyTorch（CPU 版）：在容器里跑 serve，即 live 后端黑盒验证所需。
+# 构建：scripts/lab.sh build && scripts/lab.sh build-torch
+# 运行：EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py
+FROM edgefdl-lab:latest
+ARG MIRROR=deb.debian.org
+ARG PIP_INDEX=https://pypi.org/simple
+RUN sed -i "s#deb.debian.org#${MIRROR}#g; s#security.debian.org#${MIRROR}#g" /etc/apt/sources.list.d/debian.sources \
+ && apt-get update -q \
+ && apt-get install -y -q --no-install-recommends python3-pip python3-psutil \
+ && rm -rf /var/lib/apt/lists/* \
+ && python3 -m pip install --break-system-packages --no-cache-dir --only-binary=:all: \
+        --index-url "${PIP_INDEX}" --extra-index-url https://download.pytorch.org/whl/cpu 'torch==2.9.1+cpu'

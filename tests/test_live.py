@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
 """live 后端单元测试：用假执行器验证解析、只读约束、缺测处理、上线前检查和状态推断，不碰真实网络。"""
+import contextlib
+import io
 import json
 import os
 import sys
@@ -236,10 +238,13 @@ class LiveLsdbTest(unittest.TestCase):
                      (0, '{"routerLinkStates": {"areas": {"0.0.0.0": []}}}', ""),
                      (0, '{"areas": {"0.0.0.0": {"routerLinkStates": [{"lsId": "10.255.0.1"}]}}}', "")):
             b, _ = make(lsdb_cmd="show", lsdb=lsdb)
-            self.assertEqual(b._read_lsdb(), {}, lsdb)
-            self.assertEqual(b.lsdb_fails, 1)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(b._read_lsdb(), {}, lsdb)
+                self.assertEqual(b._read_lsdb(), {}, lsdb)
+            self.assertEqual(err.getvalue().count("--lsdb-cmd"), 1)           # 连续失败只报一次
+            self.assertEqual(b.lsdb_fails, 2)
             self.assertTrue(b.lsdb_error)
-            self.assertEqual(b.status()["lsdb_fails"], 1)
+            self.assertEqual(b.health()["lsdb_fails"], 2)
 
 
 class LivePreflightTest(unittest.TestCase):
@@ -261,7 +266,26 @@ class LivePreflightTest(unittest.TestCase):
         self.assertTrue(rep["ok"], rep["problems"])
         self.assertEqual(rep["lsdb"]["links"], 15)
         b, _ = make(lsdb_cmd="show", lsdb=(0, "{}", ""))
-        self.assertFalse(preflight(b)["ok"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertFalse(preflight(b)["ok"])
+
+    def test_lldp_link_addresses_are_planned_so_preflight_lists_them(self):
+        from edgefdl.intake.form import build_topology
+        with tempfile.TemporaryDirectory() as d:
+            lldp = os.path.join(d, "lldp.csv")
+            with open(lldp, "w", encoding="utf-8") as f:
+                f.write("local_device,local_if,remote_device,remote_if\nagg1,GigabitEthernet9/0/1,core,GigabitEthernet9/0/2\n")
+            with open(os.path.join(INTAKE, "form.yaml"), encoding="utf-8") as f:
+                form = f.read()
+            p = os.path.join(d, "form.yaml")
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(form)
+            t = build_topology(p, lldp=lldp)                                  # 无设备配置：地址全靠规划
+        l = t.link_between("agg1", "core")
+        ex = FakeExec(t.vantage, silent=[l.ip_of("agg1"), l.ip_of("core")])
+        rep = preflight(LiveBackend(t, MeasurePlan(interval_s=0.001), ex=ex))
+        self.assertFalse(rep["ok"])
+        self.assertEqual({s["ip"] for s in rep["silent"]}, {l.ip_of("agg1"), l.ip_of("core")})
 
     def test_cli_needs_a_site_baseline(self):
         from edgefdl import cli
@@ -391,6 +415,21 @@ class LiveEngineTest(unittest.TestCase):
             a = self.run_fault(eng, b, Fault("delay", "L4", 20.0))
             eng.stop()
         self.assertEqual((a["fault_type"], a["link_id"]), ("delay", "L4"))
+
+    def test_device_down_is_one_alarm_with_state_inference(self):
+        with tempfile.TemporaryDirectory() as d:
+            eng, b = self.engine(d, infer=True)
+            with mock.patch.object(type(b), "deep_probe", side_effect=AssertionError("不应精测")):
+                for _ in range(8):
+                    eng.step()
+                for l in eng.topo.links:
+                    if "acc3" in (l.a, l.b):
+                        b.inject(Fault("link_down", l.id))
+                for _ in range(30):
+                    eng.step()
+            al = eng.active_list()
+            eng.stop()
+        self.assertEqual([(a["fault_type"], a.get("node")) for a in al], [("node_down", "acc3")])
 
     def test_link_down_with_state_inference(self):
         with tempfile.TemporaryDirectory() as d:

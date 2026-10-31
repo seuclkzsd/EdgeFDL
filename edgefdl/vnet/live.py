@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -108,9 +109,9 @@ class StateInference:
     """没有 LSDB 时由数据面推断控制面状态，结果按 LSDB 的形式交给特征层（--infer-state）。
 
     模型是带 LSDB 特征训练的：只把 LSDB 置空时，链路中断会被说成带宽或丢包，路由漂移没有告警（见
-    results/live_missing.json）。这里只用本轮实测，连续 confirm 轮一致才算数，没有可调的学习参数：
+    results/live_missing.json）。这里是固定规则，只用实测的 ping 与 traceroute，连续 confirm 轮一致才算数：
       · 链路中断：链路两端的接口地址都不应答（网管上联只有对端地址），而至少一端设备还有别的地址应答——
-        这排除了"整段网络不可达时下游链路全被判断"；
+        这排除了"一段网络整体不可达时，其中的链路全被判为中断"；
       · 开销变化：实测路径偏离参照路径时，在路径离开或新进入的路由器互联链路上试 DRIFT_FACTORS 各倍率，取与全部
         实测路径最一致的（链路, 倍率）。没有候选能解释至少 min_match 比例的改道目标时不推断。"""
 
@@ -347,6 +348,15 @@ def _expected_path(topo: Topology, t: Target) -> Tuple[str, ...]:
     return tuple(topo.route_to_target(topo.vantage, t)[0][1:])
 
 
+def _is_local(ip: str) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.bind((ip, 0))
+        return True
+    except OSError:
+        return False
+
+
 def preflight(b: LiveBackend, count: int = 3) -> dict:
     """只读检查一遍接入条件。ok 为 False 表示有地址不应答或工具不可用，其余差异只提示。"""
     topo = b.topo
@@ -355,6 +365,9 @@ def preflight(b: LiveBackend, count: int = 3) -> dict:
     miss = [c for c in ("ping", "traceroute") if not b.ex.have(c)]
     for c in miss:
         rep["problems"].append(f"本机没有 {c} 命令")
+    own = [l.ip_of(topo.vantage) for l in topo.links if topo.vantage in (l.a, l.b)]
+    if own and not any(_is_local(ip) for ip in own):
+        rep["notes"].append(f"本机没有拓扑给网管的地址（{', '.join(own)}）：确认在网管上运行，或按实际地址修正拓扑")
     # 地址应答
     ts = list(b._targets)
     pings = {}

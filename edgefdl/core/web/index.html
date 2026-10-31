@@ -193,7 +193,7 @@ function select(id){SEL=id; document.querySelectorAll(".link").forEach(e=>e.clas
 async function tick(){
   let s; try{ s = await (await fetch("/api/status")).json(); }catch(e){ $("#sub").textContent="与后台连接中断，重试中…"; return; }
   LAST = s;
-  $("#sub").textContent = `拓扑 ${TOPO.name} · ${TOPO.nodes.length} 设备 / ${TOPO.links.length} 链路 · 后端 ${s.backend} · 模型 ${s.model||"-"} · 周期 ${s.interval_s}s`;
+  $("#sub").textContent = `拓扑 ${TOPO.name} · ${TOPO.nodes.length} 设备 / ${TOPO.links.length} 链路 · 后端 ${s.backend}${s.read_only?"（只读）":""} · 模型 ${s.model||"-"} · 周期 ${s.interval_s}s`;
   $("#k-up b").textContent = fmtDur(s.uptime_s);
   $("#k-round b").textContent = s.round;
   const inf = s.infer && s.infer.p99_ms; $("#k-inf b").textContent = inf!=null? inf.toFixed(2)+" ms":"-";
