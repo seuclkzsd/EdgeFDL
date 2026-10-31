@@ -103,6 +103,7 @@ robustness suite reproduces `results/robust.json` apart from its run time.
   `edgefdl: --sinks 配置有误：<reason>`.
 - GOVERNANCE.md: a release may keep the `results/` files of an earlier release when it reproduces them, as 0.1.1
   does.
+- The README title gives the project name, EdgeFDL — Edge-network Fault Detection and Localization.
 - `edgefdl topo` names blind links as `盲区链路（已规划 NQA 探测目标）`: the NQA probe is planned by EdgeFDL and
   configured by the operator on the device.
 - `curl` and other clients have to send `-H 'Content-Type: application/json'` with `POST /api/inject` and
@@ -121,6 +122,8 @@ robustness suite reproduces `results/robust.json` apart from its run time.
   [v0.1.1 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1).
 
 ## [0.1.0] - 2026-10-30
+
+Not published as a release; its changes ship in 0.1.1.
 
 First release of EdgeFDL: autonomous link-level fault detection and localization for edge networks, running on the
 network-management server (EMS).
@@ -184,5 +187,4 @@ network-management server (EMS).
   [v0.1.0 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0).
 
 [Unreleased]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0
+[0.1.1]: https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1
