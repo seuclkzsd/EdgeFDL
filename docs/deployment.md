@@ -9,7 +9,7 @@ the [quick start](quickstart.md).
 integrations against the equivalent network (`sim`, `netns`, `lxd`). The `live` backend then runs the same service
 against the network itself, read-only, from the EMS ([Connecting to a real network](#connecting-to-a-real-network)). It
 is validated black-box on a real protocol stack; it has not yet run on physical devices
-([section 8](#8-scope-of-v01-and-next-steps)).
+([section 8](#8-scope-of-v02-and-next-steps)).
 
 1. [Requirements](#1-requirements)
 2. [Describe the network](#2-describe-the-network)
@@ -19,7 +19,7 @@ is validated black-box on a real protocol stack; it has not yet run on physical 
 5. [Integrations](#5-integrations)
 6. [Security](#6-security)
 7. [Checklist before going live](#7-checklist-before-going-live)
-8. [Scope of v0.1 and next steps](#8-scope-of-v01-and-next-steps)
+8. [Scope of v0.2 and next steps](#8-scope-of-v02-and-next-steps)
 
 ## How a deployment is organised
 
@@ -163,7 +163,7 @@ operator configures it once on the end device and EdgeFDL only reads its results
 Read the topology file once more before training. It is the single source of truth for the virtual network, the
 features, the alarms and the remediation advice, and the format is described in
 [architecture, topology file](architecture.md#topology-file). Parallel links between the same two devices are not
-supported in 0.1.2.
+supported in 0.2.0.
 
 ## 3. Build the equivalent network and train the model
 
@@ -791,7 +791,7 @@ There is no telemetry and no update check. The full statement, with the environm
 - [ ] The people on call know how to read an alarm: the link and its interfaces, the evidence, the remediation steps
       and the rehearsal result ([quick start, section 3](quickstart.md#3-inject-a-fault-and-read-the-alarm)).
 
-## 8. Scope of v0.1 and next steps
+## 8. Scope of v0.2 and next steps
 
 - `serve` takes its measurements from one of the three virtual backends or, read-only, from the network itself
   (`live`). The measurement data model and the CSV schema are shared by all backends, and the ping and traceroute

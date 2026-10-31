@@ -8,7 +8,7 @@ read-only towards the devices.**
 [![Release](https://img.shields.io/github/v/release/seuclkzsd/EdgeFDL)](https://github.com/seuclkzsd/EdgeFDL/releases)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue.svg)](pyproject.toml)
 
-[Documentation](docs/index.md) · [Demo video (Chinese narration, 6 min 41 s)](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
+[Online demo (no install)](https://seuclkzsd.github.io/EdgeFDL/) · [Demo video (Chinese narration, 6 min 41 s)](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [Documentation](docs/index.md) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
 
 ![Left: on the demo topology a delay on link L1 makes 16 of the 36 monitored targets cross their thresholds, while EdgeFDL raises one alarm naming L1 and the fault type. Right: type + location accuracy on the independent test set (link down 100.00%, performance degradation 98.73%, route drift 100.00%) against the targets, and three self-test figures](docs/images/hero.png)
 
@@ -26,6 +26,16 @@ is a single alarm naming L1 and the fault type; for L3, coverage planning adds a
 which the operator configures once on a device and EdgeFDL only reads. The agent is trained for each network without
 production fault data: faults are injected into an equivalent virtual network built from the network's own topology.
 
+## Evidence at a glance
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Is it better than what exists? | On the same measurements as re-implementations of the methods behind existing tools (threshold alerting, alarm grouping, boolean tomography, NetBouncer-style regression, 007-style voting, default and tuned, also with added control-plane rules): link and type correct in **98.6%** of 2,520 faults over six conditions against 96.3% for the best baseline; both of two simultaneous faults reported with their types in **97.3%** against 92.0%, with no wrong alarm. Per-target thresholds name no link and raise up to 36 alarms per fault | [Comparison](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
+| Does it work outside a simulator? | On a real protocol stack (network namespaces, FRR OSPF, `tc`, wall-clock 5 s rounds) with the model trained on the simulator only: **84/84** single-fault scenarios alarmed with the right type and link, mean 37.9 s, all cleared after repair; device down 6/6; two faults: first alarm right 16/16, both reported 15/16; 0 false alarms in 2.67 network hours | [Results](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) |
+| Can it watch a real network? | `serve --backend live` measures a routed network read-only from the EMS; nothing is created or changed on any device. Black-box on a real protocol stack, with faults applied from outside the serving process and routers at the Linux default ICMP rate limit: **34/34** with LSDB access and link-end probes, 30/36 with LSDB access, 28/36 from ping and traceroute alone. Not yet run on physical devices | [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
+| Can I try it now? | Replay in the browser, `docker compose up`, or three commands from source; no hardware, no keys | [Quick start](#quick-start) |
+| Is it safe to adopt? | Apache-2.0, read-only towards devices, every dependency listed with its license and checked in CI, hash-pinned image, quarterly roadmap with measurable criteria | [Dependencies](docs/dependencies.md) · [Roadmap](ROADMAP.md) · [Governance](GOVERNANCE.md) |
+
 ## Capabilities at a glance
 
 | Capability | What it does | Evidence |
@@ -35,7 +45,9 @@ production fault data: faults are injected into an equivalent virtual network bu
 | Robust under harsh conditions | 24 h simulated runs under 16 conditions (heavier and longer transients, missing measurements, ICMP rate limiting, background jitter, busy-hour drift): 0 false alarms per day in 12 of them, 1–2 in three, 9 when every transient lasts 15 s. Accuracy over the 84 scenarios stays between 96.4% and 100.0% under the 8 conditions tested | [Results](docs/results.md) · [`robust.json`](results/robust.json) |
 | Lightweight | p99 0.575 ms per forward pass of the agent (PyTorch, 1 thread; NumPy engine 0.302 ms), 36,041 parameters; probe traffic 222.0 kbps = 0.222% of the narrowest 100 Mbps link even if all of it crossed that link; compute 0.0868% of one core; RSS 528.6 MB, mostly the PyTorch runtime (targets: ≤100 ms, <5%, ≤20%) | [`bench.json`](results/bench.json) |
 | No production fault data needed | An equivalent virtual network enumerates the fault space (231 fault primitives on the demo topology). Samples are cut exactly when the online detector would wake the agent (trigger-aligned) and are domain-randomized (longer transients, ICMP rate limiting, background jitter). 60,000 samples in 87.8 s with 16 processes; training about 4.4 min on 8 CPU threads | [Architecture](docs/architecture.md) · [`pipeline.log`](results/pipeline.log) |
-| Validated on a real protocol stack | Network namespaces + FRR OSPF + tc in a privileged container, 26 checks, 26/26 in each of 3 runs: link down → both interfaces unreachable and traffic reroutes; +20 ms one-way delay → RTT +40.0 ms; bandwidth cut to 20% → deep probe 200 Mbps; OSPF cost ×10 → path avoids the link, LSDB cost 100; baseline RTT of each of the 37 targets within 0.74 ms of the simulator (median 0.39 ms); about 290 KB of probe traffic per round (≈465 kbps, with 10 pings per target instead of the default 5) | [`results/smoke/`](results/smoke/) · [`sim_vs_stack.json`](results/sim_vs_stack.json) |
+| Measured on a real protocol stack | The online engine with the released model on network namespaces + FRR OSPF + tc, in wall-clock 5 s rounds: 84/84 single-fault scenarios alarmed with the right type and link and cleared after repair, mean time to alarm 37.9 s; device down 6/6; two faults: first alarm right 16/16, both reported 15/16; 0 false alarms in 2.67 network hours, half of them with transients in 15% of rounds. Smoke test 26/26 checks in each of 3 runs; baseline RTT of each of the 37 targets within 0.74 ms of the simulator | [Results](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) · [`results/smoke/`](results/smoke/) · [`sim_vs_stack.json`](results/sim_vs_stack.json) |
+| Runs on a real network, read-only | `serve --backend live` measures the network from the EMS with ping and traceroute; it creates and changes nothing, and injection is refused. `preflight` checks addresses, privileges and optional inputs first. Black-box on a real protocol stack: 34/34 scenarios right with `--lsdb-cmd` and `--endpoints` (mean time to alarm 38.7 s), 30/36 with `--lsdb-cmd`, 28/36 from ping and traceroute alone with `--infer-state` (without packet trains, bandwidth faults are invisible); 0 alarms outside faults. Not yet run on physical devices | [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
+| One command to run | `docker compose up` gives the dashboard on `http://127.0.0.1:8460` with the simulated network and the bundled model. Non-root container with a read-only root file system and no capabilities, CPU-only PyTorch, every Python package pinned by hash. Image 1023.6 MB, 171.2 MiB of memory after a fault-and-recovery cycle. Evaluating the bundled model inside the image reproduces `results/eval_test.json` byte for byte | [`docker_check.json`](results/docker_check.json) · [Deployment](docs/deployment.md#container-image) |
 | Integrations | Web dashboard, REST API, Syslog (RFC 5424), Webhook (JSON), Prometheus `/metrics`, CSV logs with schema files | [API](docs/api.md) · [Deployment](docs/deployment.md) |
 
 **Test conditions.** Accuracy, latency and robustness figures come from the analytic simulation backend on the
@@ -45,11 +57,26 @@ access routers, four hosts and the EMS; 15 links of 1000 / 100 Mbps), with the r
 The test set uses standard conditions and a seed different from training, and is scored end to end: a fault that never
 triggers the detector counts as missed. Online runs use simulated time with 5 s rounds and a 15% chance per round of a
 one-round delay spike or loss burst on a random link; the robustness suite uses seed 21. Raw outputs are in
-[`results/`](results/README.md).
+[`results/`](results/README.md). Real-stack figures have their own conditions in
+[section 3.1 of the results page](docs/results.md#31-online-accuracy-on-the-real-protocol-stack).
 
 ## Quick start
 
 No network hardware needed: the bundled model runs against the simulated demo network.
+
+**In the browser, no install.** The [recorded replay](https://seuclkzsd.github.io/EdgeFDL/) plays the real dashboard from
+the API responses of one run on the simulator: a 20 ms delay on L1 puts 16 of the 36 targets over their thresholds and
+raises one alarm naming L1, 35 s after the injection; link down with backup takeover, route drift, two simultaneous
+faults and a device going down follow. How it is recorded: [docs/demo/README.md](docs/demo/README.md).
+
+**One command, with Docker.**
+
+```bash
+git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
+docker compose up        # builds the image on the first run; no Python needed
+```
+
+**From source.**
 
 ```bash
 git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
@@ -74,12 +101,17 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 
 | What | Command | Notes |
 |---|---|---|
+| Comparison with the methods behind existing tools | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | about 15 min with 24 workers |
 | Full pipeline: baseline → 60,000 samples → training → evaluation → self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | about 15 min on CPU |
 | Accuracy on the test set | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz` | `test.npz` is written by the pipeline |
 | Self-test | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 rounds × 5 s = 72 h of simulated time |
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | about 3.5 min with 40 workers |
 | Real protocol stack | `scripts/lab.sh build && scripts/lab.sh smoke` | Docker with privileged containers; 26 checks |
-| Unit tests | `python -m unittest discover -s tests` | 72 tests |
+| Accuracy on the real protocol stack | see [docs/results.md, section 3.1](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) | Docker with privileged containers; about 45 min with 12 containers |
+| `live` backend, black box | `scripts/lab.sh build-torch`, then `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | Docker with privileged containers; about 30 min per 17 scenarios |
+| Container image end to end | `tools/dev/ci.sh image` | Docker with the compose plugin; builds, injects a fault through the REST API, checks alarm and recovery, removes everything |
+| Dashboard replay | `python tools/demo/record.py` | one real-time run, about 14 min |
+| Unit tests | `python -m unittest discover -s tests` | 176 tests |
 
 The pipeline trains a new model in `runs/v6/`, which is not identical to the released one; the figures on this page
 were measured with `results/model.pt`, and evaluating that bundle reproduces the test-set figures exactly. The lab
@@ -105,8 +137,22 @@ Details: [architecture](docs/architecture.md) · [algorithms](docs/algorithms.md
 
 ## Compared with existing open-source tools
 
-Capability level, from public documentation; we did not run these tools. They are mature and much broader in scope;
-EdgeFDL complements them and sends its alarms to them via Syslog, Webhook or Prometheus.
+**Measured on the same measurements.** `python -m edgefdl compare` replays the stream the engine sees through
+re-implementations of threshold alerting, alarm grouping, boolean tomography, greedy set cover, NetBouncer-style
+regression and 007-style voting, each with the routing matrix, pings to both interfaces of every link, and default and
+tuned parameters. These are the published methods, not the products. On the 84 single-fault scenarios (5 seeds,
+simulation backend) EdgeFDL names link and type in 100.0% with one alarm per fault, no false alarm and 38.5 s to alarm.
+With added LSDB and bandwidth rules the best baselines reach 98.3% at 52.2 false alarms per day, or 97.1% in 57.6 s and
+96.4% in 150.4 s with none.
+
+![Three panels with one row per method. Left: link and type correct by fault type under standard conditions. Middle: link and type correct under six test conditions. Right: false alarms per simulated day under the same conditions](docs/images/compare.png)
+
+EdgeFDL is behind under ICMP rate limiting (95.2% against 96.7%), on false alarms when every transient lasts 15 s (9.6
+per day against 0.0), and on time to alarm for link down and route drift, where a short LSDB rule takes 10 s against
+30 s. Full tables, parameters and what this does not cover: [docs/comparison.md](docs/comparison.md#measured-comparison).
+
+**Capabilities**, from public documentation. The tools are mature and much broader in scope; EdgeFDL complements them
+and sends its alarms to them via Syslog, Webhook or Prometheus.
 
 | | General monitoring<br>Zabbix · Prometheus · Nightingale | Network management<br>LibreNMS · OpenNMS ALEC | Active measurement<br>perfSONAR · SmokePing | **EdgeFDL** |
 |---|---|---|---|---|
@@ -124,19 +170,20 @@ More, including research approaches (network tomography, NetBouncer, 007): [docs
 edgefdl/            the Python package (python -m edgefdl ...)
   topology.py         topology model, IP plan, OSPF SPF, monitored targets, coverage planning
   intake/             requirements form, device configuration and LLDP extraction
-  vnet/               equivalent virtual network: sim, netns (+ FRR), lxd backends
+  vnet/               equivalent virtual network: sim, netns (+ FRR), lxd backends; live backend for a real network
   faults/             fault model, injector (tc / netem / tbf / ip / vtysh), sample generator
   measure/            probes and parsers, CSV store with schema files
   agent/              features, DDQN, inference (PyTorch and NumPy engines), advice and rehearsal
   core/               detector, orchestrator, alarm sinks, HTTP API, web dashboard
-  bench.py robust.py  self-test and robustness harnesses
+  bench.py robust.py compare.py  self-test, robustness and comparison harnesses
 configs/            demo topology and a sample intake form with device configurations
 results/            released model, result JSON files, pipeline log, real-stack smoke logs
-scripts/            lab container (lab.sh, Dockerfile), real-stack smoke test, simulator vs real-stack RTT comparison,
-                    multi- vs single-alarm comparison
+scripts/            lab container (lab.sh, Dockerfile), real-stack smoke test and accuracy run, live backend black-box
+                    test, simulator vs real-stack RTT comparison, multi- vs single-alarm comparison
 tests/              unit tests
-tools/              SPDX header check, CI script, figure generation
-docs/               documentation, images and dashboard screenshots
+tools/              SPDX and license checks, lock file generator, CI script, figure generation, replay recorder
+docs/               documentation, images, dashboard screenshots, recorded replay (docs/demo/)
+Dockerfile compose.yaml requirements-lock.txt   one-command run from a hash-pinned image
 ```
 
 ## Documentation
@@ -155,12 +202,13 @@ behaved on your network, including where it was wrong, is the most valuable cont
 
 EdgeFDL is maintained by [@seuclkzsd](https://github.com/seuclkzsd); roles and decision rules are in
 [GOVERNANCE.md](GOVERNANCE.md) and [MAINTAINERS.md](MAINTAINERS.md). Report vulnerabilities privately as described in
-[SECURITY.md](SECURITY.md). Version history: [CHANGELOG.md](CHANGELOG.md).
+[SECURITY.md](SECURITY.md). Questions and help: [SUPPORT.md](SUPPORT.md). Version history: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
 EdgeFDL is released under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE) for attributions and third-party
-components.
+components. Every runtime dependency with its version and license, the external programs and the distribution boundary
+are listed in [docs/dependencies.md](docs/dependencies.md).
 
 ## Citation
 
@@ -171,7 +219,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
   author  = {seuclkzsd},
   title   = {EdgeFDL: Edge-network Fault Detection and Localization},
   year    = {2026},
-  version = {0.1.2},
+  version = {0.2.0},
   url     = {https://github.com/seuclkzsd/EdgeFDL},
   license = {Apache-2.0}
 }
@@ -179,11 +227,12 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 
 ## Limitations and next steps
 
-- In v0.1.2, `serve` measures the equivalent virtual network (`sim`, `netns` or `lxd` backend); connecting it to a
-  physical network is the first item of the roadmap. Accuracy and robustness figures come from the analytic
-  simulation backend on the 12-device demo topology. The real protocol stack (netns + FRR + tc) is validated by smoke
-  tests, not by accuracy runs; for the LXD backend the generated commands are verified (dry run) but have not yet been
-  run on hardware.
+- `serve --backend live` measures a real routed network read-only from the EMS; it is validated black-box on the
+  `netns` real stack on 6 of the 15 demo links and has not yet run on physical devices. For the LXD backend the
+  generated commands are verified (dry run) but have not yet been run on hardware.
+- Accuracy and robustness figures come from the analytic simulation backend on the 12-device demo topology, except the
+  real-stack run: 84 scenarios, device-down and two-fault cases on netns + FRR + tc, with emulated links, one fault size
+  per type and no background traffic. The harsh conditions of the robustness suite have not been repeated on the stack.
 - The harsh conditions (ICMP rate limiting, busy-hour drift, long transients) are modelled by us, not measured on
   production networks. The 72 h figure is simulated time; a 72-hour real-time run is planned.
 - Light probes (5 packets per target per round) do not detect one-way loss below about 3%, or a bandwidth reduction
@@ -195,6 +244,6 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 - One model per topology, by design; transfer of the shared encoder across topologies is not yet validated.
 - Code comments, CLI help and the dashboard are in Chinese; the documentation is in English.
 
-Next: the LXD backend on hardware with a physical network, a 72-hour real-time run, real-stack samples (including heavy
-loss), SNMP / NQA readers, Kylin OS and openEuler, a PyPI package and an English UI. Quarterly plan, success criteria
+Next: the `live` backend on physical routers, the LXD backend on hardware, a 72-hour real-time run, real-stack samples
+(including heavy loss), SNMP / NQA readers, Kylin OS and openEuler, a PyPI package and an English UI. Quarterly plan, success criteria
 and non-goals: [ROADMAP.md](ROADMAP.md).

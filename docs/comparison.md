@@ -358,9 +358,8 @@ and a device outage is aggregated into one device-level alarm (60 of 60 trials).
 Thresholds, dependencies and correlation rules are normally tuned by experienced staff, and data-driven correlation
 needs a history of alarms from the production network. EdgeFDL builds an equivalent virtual network of the operator's
 topology, enumerates the fault space (231 fault primitives on the demo topology), generates trigger-aligned samples
-and trains a per-network model, so the model exists before the network has had its first fault. In release 0.1.2
-the online service measures that equivalent network; connecting it to the physical network is on the
-[roadmap](../ROADMAP.md).
+and trains a per-network model, so the model exists before the network has had its first fault. The online service then runs on that equivalent network
+or, read-only, on the network itself with the `live` backend ([deployment](deployment.md#connecting-to-a-real-network)).
 
 ### 4. Read-only, low overhead
 

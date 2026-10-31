@@ -4,7 +4,7 @@
 other systems through Syslog, a Webhook, Prometheus metrics and CSV logs. This page is the reference for all of
 them. The examples are real responses, captured from `serve --backend sim --interval 1` with the released model while
 link L6 was down and link L1 had 20 ms of added delay (and, for the device-down examples, while all links of agg2
-were down). Long lists are abridged where marked; alarm IDs and the rehearsal text are shown as release 0.1.2 writes
+were down). Long lists are abridged where marked; alarm IDs and the rehearsal text are shown as release 0.2.0 writes
 them.
 
 - [Conventions](#conventions)
@@ -578,7 +578,7 @@ schema_version,alarm_id,ts,epoch,event,severity,category,fault_type,fault_type_c
 |---|---|
 | `schema_version`, `ts`, `epoch` | As in the measurement log |
 | `alarm_id` | Alarm ID; a `clear` row repeats the ID of the alarm it clears |
-| `event` | `raise` or `clear` (the schema file also reserves `update`, which release 0.1.2 does not write) |
+| `event` | `raise` or `clear` (the schema file also reserves `update`, which release 0.2.0 does not write) |
 | `severity`, `category`, `fault_type`, `fault_type_cn` | As in the [alarm object](#the-alarm-object) |
 | `link_id`, `endpoints`, `site` | As in the alarm object (`/`-joined links and the device for `node_down`) |
 | `confidence` | Confidence 0–1 at the time of the row |

@@ -548,7 +548,7 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
 | Accuracy on the real protocol stack | see [section 3.1](#31-online-accuracy-on-the-real-protocol-stack) | `runs/realstack/realstack.json`, as `results/realstack.json` (times and traffic vary between runs) | about 45 minutes with 12 containers |
 | Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
-| Unit tests | `python -m unittest discover -s tests` | 72 tests | about 20 s |
+| Unit tests | `python -m unittest discover -s tests` | 176 tests | about 30 s |
 
 Notes:
 

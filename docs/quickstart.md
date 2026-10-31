@@ -33,7 +33,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python3 -m venv .venv && . .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu    # CPU-only PyTorch (a much smaller download)
 pip install -r requirements.txt                                       # numpy, pyyaml, torch, psutil
-python -m edgefdl --version                                           # edgefdl 0.1.2
+python -m edgefdl --version                                           # edgefdl 0.2.0
 ```
 
 - The CPU-only PyTorch line is optional but recommended: EdgeFDL never uses a GPU, and the default PyTorch wheel for
@@ -42,7 +42,7 @@ python -m edgefdl --version                                           # edgefdl 
 - `pip install -e .` additionally installs an `edgefdl` command (`edgefdl --version`). Keep working from the
   checkout: the demo topology (`configs/`) and the released model (`results/`) live in the repository, not in the
   Python package.
-- Check the installation with the unit tests (72 tests, about 20 s):
+- Check the installation with the unit tests (176 tests, about 30 s):
 
   ```bash
   python -m unittest discover -s tests
