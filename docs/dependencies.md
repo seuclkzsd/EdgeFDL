@@ -43,10 +43,10 @@ optionally, psutil; the other nine are dependencies of PyTorch.
 | typing_extensions | 4.16.0 | PSF-2.0 | torch |
 <!-- licenses:end -->
 
-`requirements.txt` and `pyproject.toml` state the minimum versions; other versions of the transitive packages may be
-installed outside the image. The direct versions in the lock are the ones the published results were produced with:
-PyTorch 2.9.1 (here its CPU build), NumPy 2.3.3, PyYAML 6.0.3, psutil 7.2.2. The published results used Python 3.13;
-the image uses Python 3.12.
+`requirements.txt` and `pyproject.toml` state the minimum versions; other versions may be installed outside the image.
+The PyTorch version in the lock is the one of the published results, 2.9.1, here as its CPU build. The published results
+used Python 3.13 and the image uses Python 3.12; evaluating `results/model.pt` on the test set inside the image
+reproduces `results/eval_test.json` byte for byte ([`results/docker_check.json`](../results/docker_check.json)).
 
 ### Native libraries inside the wheels
 

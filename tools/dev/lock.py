@@ -5,7 +5,7 @@
     python tools/dev/lock.py                  # 在 Dockerfile 固定的基础镜像里用 pip 解析（需要 Docker）
     python tools/dev/lock.py --report r.json  # 改用已有的 pip install --dry-run --report 输出
 
-直接依赖的版本在 ROOTS 里：torch、numpy、PyYAML、psutil 取发布结果所用的版本；传递依赖由 pip 解析。
+直接依赖的版本固定在 ROOTS 里（torch 与发布结果的版本一致，这里用其 CPU 构建），传递依赖由 pip 解析。
 环境变量 EDGEFDL_REGISTRY 指定基础镜像的仓库前缀，PIP_INDEX_URL 指定 PyPI 镜像，HTTPS_PROXY 传入容器。
 """
 import argparse
