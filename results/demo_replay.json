@@ -1,0 +1,427 @@
+{
+ "meta": {
+  "note": "Recorded REST API responses of a real `edgefdl serve` run on the simulation backend; every frame comes from the running system. tools/demo/record.py regenerates this file.",
+  "recorded": "2026-10-31T20:39:00+0800",
+  "edgefdl": "0.1.2",
+  "commit": "666afade6609bc6ded38d76f3871b1289636758d",
+  "model": "ddqn-20261030-0116",
+  "model_file": "results/model.pt",
+  "model_sha256": "7d322677362e350e71eecb9beac6978e9c05b91c3c7d5f29c923f8d22ae21e36",
+  "backend": "sim",
+  "topology": "demo-edge",
+  "command": "python -m edgefdl serve --model results/model.pt --backend sim --seed 0 --noise 0.1",
+  "interval_s": 5.0,
+  "seed": 0,
+  "noise": 0.1,
+  "rounds": 164,
+  "skipped_rounds": 0,
+  "python": "3.13.5",
+  "torch": "2.9.1+cu128",
+  "numpy": "2.3.3",
+  "engine_errors": 0,
+  "alarms_total": 6,
+  "filtered_total": 5,
+  "time_rule": "seconds after an injection or repair = rounds x interval_s, as in the self-test",
+  "over_threshold_rule": "per-target test of the detector (FeatureEncoder.anomaly_matrix: RTT, jitter, loss, unreachable) against the baseline in the model bundle, for the EMS-side targets"
+ },
+ "targets_total": 36,
+ "scenes": [
+  {
+   "id": "normal",
+   "zh": "网络正常",
+   "en": "Normal network",
+   "focus": "L1",
+   "start": 0,
+   "end": 12,
+   "alarms_raised": 0,
+   "over_threshold_max": 1
+  },
+  {
+   "id": "degradation",
+   "zh": "L1 性能劣化",
+   "en": "Degradation of L1",
+   "focus": "L1",
+   "start": 12,
+   "inject": 15,
+   "first_alarm": 21,
+   "expected_alarms_met": true,
+   "all_alarms": 21,
+   "repair": 28,
+   "alarms_gone": 30,
+   "end": 37,
+   "injected": [
+    {
+     "type": "delay",
+     "link": "L1",
+     "value": 20.0
+    }
+   ],
+   "inject_round": 16,
+   "fault_rounds": 13,
+   "over_threshold_mode": 16,
+   "over_threshold_max": 17,
+   "over_threshold_mode_rounds": 12,
+   "over_threshold_targets": [
+    "L1.agg1",
+    "L10.acc2",
+    "L11.acc1",
+    "L11.h1",
+    "L12.acc2",
+    "L12.h2",
+    "L3.agg1",
+    "L4.acc1",
+    "L4.agg1",
+    "L5.acc2",
+    "L5.agg1",
+    "L8.acc1",
+    "L8.acc2",
+    "lo.acc1",
+    "lo.acc2",
+    "lo.agg1"
+   ],
+   "unreachable_max": 0,
+   "alarms": [
+    {
+     "alarm_id": "A1793449519-4b77cb-0001",
+     "fault_type": "delay",
+     "link_id": "L1",
+     "node": null,
+     "first_round": 23,
+     "rounds_after_injection": 7,
+     "seconds_after_injection": 35.0,
+     "confidence": 0.989,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    }
+   ],
+   "alarms_raised": 1,
+   "rounds_to_first_alarm": 7,
+   "seconds_to_first_alarm": 35.0,
+   "rounds_to_clear": 3,
+   "seconds_to_clear": 15.0,
+   "alarms_before_repair": [
+    "L1 delay degradation"
+   ],
+   "alarms_match_injection": true,
+   "routes_changed_before_repair": 0,
+   "route_example": null,
+   "rehearsal": {
+    "action": "临时将 L1 两端 OSPF 开销 10→100，引导业务绕行劣化链路",
+    "feasible": true,
+    "detail": "14 个目标改走备份路径"
+   },
+   "ospf_cost": {}
+  },
+  {
+   "id": "link_down",
+   "zh": "链路中断与备份路径接管",
+   "en": "Link down, backup path takes over",
+   "focus": "L6",
+   "start": 37,
+   "inject": 40,
+   "first_alarm": 45,
+   "expected_alarms_met": true,
+   "all_alarms": 45,
+   "repair": 52,
+   "alarms_gone": 54,
+   "end": 66,
+   "injected": [
+    {
+     "type": "link_down",
+     "link": "L6"
+    }
+   ],
+   "inject_round": 41,
+   "fault_rounds": 12,
+   "over_threshold_mode": 7,
+   "over_threshold_max": 7,
+   "over_threshold_mode_rounds": 12,
+   "over_threshold_targets": [
+    "L10.acc3",
+    "L13.acc3",
+    "L13.h3",
+    "L6.acc3",
+    "L6.agg2",
+    "L9.acc3",
+    "lo.acc3"
+   ],
+   "unreachable_max": 2,
+   "alarms": [
+    {
+     "alarm_id": "A1793449519-4b77cb-0002",
+     "fault_type": "link_down",
+     "link_id": "L6",
+     "node": null,
+     "first_round": 47,
+     "rounds_after_injection": 6,
+     "seconds_after_injection": 30.0,
+     "confidence": 0.97,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    }
+   ],
+   "alarms_raised": 1,
+   "rounds_to_first_alarm": 6,
+   "seconds_to_first_alarm": 30.0,
+   "rounds_to_clear": 3,
+   "seconds_to_clear": 15.0,
+   "alarms_before_repair": [
+    "L6 link down"
+   ],
+   "alarms_match_injection": true,
+   "routes_changed_before_repair": 7,
+   "route_example": {
+    "target": "L13.h3",
+    "baseline": "ems>core>agg2>acc3>h3",
+    "current": "ems>core>agg2>acc4>acc3>h3"
+   },
+   "rehearsal": {
+    "action": "依赖 OSPF 自动切换至备份路径",
+    "feasible": true,
+    "detail": "7 个监测目标已切换到备份路径；业务无单点中断"
+   },
+   "ospf_cost": {}
+  },
+  {
+   "id": "route_drift",
+   "zh": "路由漂移",
+   "en": "Route drift",
+   "focus": "L4",
+   "start": 66,
+   "inject": 69,
+   "first_alarm": 74,
+   "expected_alarms_met": true,
+   "all_alarms": 74,
+   "repair": 81,
+   "alarms_gone": 83,
+   "end": 91,
+   "injected": [
+    {
+     "type": "route_drift",
+     "link": "L4",
+     "value": 10.0
+    }
+   ],
+   "inject_round": 70,
+   "fault_rounds": 12,
+   "over_threshold_mode": 5,
+   "over_threshold_max": 6,
+   "over_threshold_mode_rounds": 11,
+   "over_threshold_targets": [
+    "L11.acc1",
+    "L11.h1",
+    "L4.acc1",
+    "L8.acc1",
+    "lo.acc1"
+   ],
+   "unreachable_max": 0,
+   "alarms": [
+    {
+     "alarm_id": "A1793449519-4b77cb-0003",
+     "fault_type": "route_drift",
+     "link_id": "L4",
+     "node": null,
+     "first_round": 76,
+     "rounds_after_injection": 6,
+     "seconds_after_injection": 30.0,
+     "confidence": 0.996,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    }
+   ],
+   "alarms_raised": 1,
+   "rounds_to_first_alarm": 6,
+   "seconds_to_first_alarm": 30.0,
+   "rounds_to_clear": 3,
+   "seconds_to_clear": 15.0,
+   "alarms_before_repair": [
+    "L4 route drift"
+   ],
+   "alarms_match_injection": true,
+   "routes_changed_before_repair": 5,
+   "route_example": {
+    "target": "L11.h1",
+    "baseline": "ems>core>agg1>acc1>h1",
+    "current": "ems>core>agg1>acc2>acc1>h1"
+   },
+   "rehearsal": {
+    "action": "将 L4 两端 OSPF 开销恢复为基线值 10（当前 100）",
+    "feasible": true,
+    "detail": "6 个监测目标的路径随之回到基线，恢复后全部监测路径与基线一致"
+   },
+   "ospf_cost": {
+    "L4": 100.0
+   }
+  },
+  {
+   "id": "two_faults",
+   "zh": "两处故障同时发生",
+   "en": "Two simultaneous faults",
+   "focus": "L7",
+   "start": 91,
+   "inject": 94,
+   "first_alarm": 102,
+   "expected_alarms_met": true,
+   "all_alarms": 110,
+   "repair_first": 117,
+   "first_cleared": 119,
+   "repair": 126,
+   "alarms_gone": 128,
+   "end": 135,
+   "injected": [
+    {
+     "type": "delay",
+     "link": "L5",
+     "value": 20.0
+    },
+    {
+     "type": "loss",
+     "link": "L7",
+     "value": 0.15
+    }
+   ],
+   "inject_round": 95,
+   "fault_rounds": 23,
+   "over_threshold_mode": 10,
+   "over_threshold_max": 11,
+   "over_threshold_mode_rounds": 12,
+   "over_threshold_targets": [
+    "L10.acc2",
+    "L12.acc2",
+    "L12.h2",
+    "L14.acc4",
+    "L14.h4",
+    "L5.acc2",
+    "L7.acc4",
+    "L8.acc2",
+    "lo.acc2",
+    "lo.acc4"
+   ],
+   "unreachable_max": 0,
+   "alarms": [
+    {
+     "alarm_id": "A1793449519-4b77cb-0004",
+     "fault_type": "loss",
+     "link_id": "L7",
+     "node": null,
+     "first_round": 104,
+     "rounds_after_injection": 9,
+     "seconds_after_injection": 45.0,
+     "confidence": 0.958,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    },
+    {
+     "alarm_id": "A1793449519-4b77cb-0005",
+     "fault_type": "delay",
+     "link_id": "L5",
+     "node": null,
+     "first_round": 112,
+     "rounds_after_injection": 17,
+     "seconds_after_injection": 85.0,
+     "confidence": 0.973,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    }
+   ],
+   "alarms_raised": 2,
+   "rounds_to_first_alarm": 9,
+   "seconds_to_first_alarm": 45.0,
+   "rounds_to_clear": 3,
+   "seconds_to_clear": 15.0,
+   "alarms_before_repair": [
+    "L7 loss degradation",
+    "L5 delay degradation"
+   ],
+   "alarms_match_injection": true,
+   "routes_changed_before_repair": 0,
+   "route_example": null,
+   "rehearsal": {
+    "action": "临时将 L7 两端 OSPF 开销 20→200，引导业务绕行劣化链路",
+    "feasible": true,
+    "detail": "3 个目标改走备份路径（已计入其他活动告警：L5 时延劣化(RTT异常)）"
+   },
+   "ospf_cost": {}
+  },
+  {
+   "id": "device_down",
+   "zh": "设备宕机",
+   "en": "A device goes down",
+   "focus": "L6",
+   "start": 135,
+   "inject": 138,
+   "first_alarm": 143,
+   "expected_alarms_met": true,
+   "all_alarms": 143,
+   "repair": 150,
+   "alarms_gone": 152,
+   "end": 164,
+   "injected": [
+    {
+     "type": "link_down",
+     "link": "L6"
+    },
+    {
+     "type": "link_down",
+     "link": "L9"
+    },
+    {
+     "type": "link_down",
+     "link": "L10"
+    },
+    {
+     "type": "link_down",
+     "link": "L13"
+    }
+   ],
+   "inject_round": 139,
+   "fault_rounds": 12,
+   "over_threshold_mode": 9,
+   "over_threshold_max": 13,
+   "over_threshold_mode_rounds": 10,
+   "over_threshold_targets": [
+    "L10.acc2",
+    "L10.acc3",
+    "L13.acc3",
+    "L13.h3",
+    "L6.acc3",
+    "L6.agg2",
+    "L9.acc3",
+    "L9.acc4",
+    "lo.acc3"
+   ],
+   "unreachable_max": 12,
+   "alarms": [
+    {
+     "alarm_id": "A1793449519-4b77cb-0006",
+     "fault_type": "node_down",
+     "link_id": "L6/L9/L10/L13",
+     "node": "acc3",
+     "first_round": 145,
+     "rounds_after_injection": 6,
+     "seconds_after_injection": 30.0,
+     "confidence": 0.915,
+     "cleared_why": "告警链路自身证据恢复至基线",
+     "rounds_after_repair": 3
+    }
+   ],
+   "alarms_raised": 1,
+   "rounds_to_first_alarm": 6,
+   "seconds_to_first_alarm": 30.0,
+   "rounds_to_clear": 3,
+   "seconds_to_clear": 15.0,
+   "alarms_before_repair": [
+    "device acc3 down"
+   ],
+   "alarms_match_injection": true,
+   "routes_changed_before_repair": 0,
+   "route_example": null,
+   "rehearsal": {
+    "action": "依赖 OSPF 自动绕开故障设备",
+    "feasible": false,
+    "detail": "0 个监测目标已切换到备份路径；仍中断的目标: L13.h3"
+   },
+   "ospf_cost": {}
+  }
+ ]
+}

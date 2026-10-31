@@ -12,6 +12,7 @@ the pages translate the labels you will see.
 
 | You want to | Read, in this order |
 |---|---|
+| See it work, nothing to install | [Recorded dashboard replay](demo/README.md) |
 | See it work (about 10 minutes, no network hardware) | [Quick start](quickstart.md) → [Results](results.md) |
 | Prepare it for your own network | [Quick start](quickstart.md) → [Deployment](deployment.md) → [REST API and integrations](api.md) |
 | Connect it to a monitoring or ticketing system | [REST API and integrations](api.md) → [Deployment, section 5](deployment.md#5-integrations) |
