@@ -133,7 +133,7 @@ class KernelStackBackend(Backend):
                  use_frr: bool = True, workers: int = 48, trace_workers: int = 8,
                  ospf_timers: Tuple[int, int] = (1, 4)):
         """ospf_timers=(hello, dead) 秒。默认 1/4 求快速收敛；现网多为 10/40。两者 dead/hello 比相同，
-        但时间尺度压缩 10 倍后，丢包引起的邻接抖动按墙钟计也会频繁 10 倍（见 docs 的实测表）。"""
+        但时间尺度压缩 10 倍后，丢包引起的邻接抖动按墙钟计也会频繁 10 倍。"""
         super().__init__(topo, plan)
         check_linux_ifnames(topo)               # 接口名直接用于 ip link / tc / FRR，须是合法 Linux 接口名
         self.ospf_timers = ospf_timers

@@ -79,7 +79,7 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 | Self-test | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 rounds × 5 s = 72 h of simulated time |
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | about 3.5 min with 40 workers |
 | Real protocol stack | `scripts/lab.sh build && scripts/lab.sh smoke` | Docker with privileged containers; 26 checks |
-| Unit tests | `python -m unittest discover -s tests` | 71 tests |
+| Unit tests | `python -m unittest discover -s tests` | 72 tests |
 
 The pipeline trains a new model in `runs/v6/`, which is not identical to the released one; the figures on this page
 were measured with `results/model.pt`, and evaluating that bundle reproduces the test-set figures exactly. The lab
@@ -171,7 +171,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
   author  = {seuclkzsd},
   title   = {EdgeFDL: Edge-network Fault Detection and Localization},
   year    = {2026},
-  version = {0.1.1},
+  version = {0.1.2},
   url     = {https://github.com/seuclkzsd/EdgeFDL},
   license = {Apache-2.0}
 }
@@ -179,7 +179,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 
 ## Limitations and next steps
 
-- In v0.1.1, `serve` measures the equivalent virtual network (`sim`, `netns` or `lxd` backend); connecting it to a
+- In v0.1.2, `serve` measures the equivalent virtual network (`sim`, `netns` or `lxd` backend); connecting it to a
   physical network is the first item of the roadmap. Accuracy and robustness figures come from the analytic
   simulation backend on the 12-device demo topology. The real protocol stack (netns + FRR + tc) is validated by smoke
   tests, not by accuracy runs; for the LXD backend the generated commands are verified (dry run) but have not yet been

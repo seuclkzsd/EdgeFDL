@@ -14,6 +14,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -123,6 +124,14 @@ class SinkTest(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 cli.main(["serve", "--model", "no-such-model.pt", "--sinks", bad])
             self.assertIn("--sinks 配置有误", str(cm.exception.code))
+
+    def test_missing_default_topology_gives_a_message(self):
+        from edgefdl import cli
+        with mock.patch.object(cli, "DEFAULT_TOPO", "/no/such/demo_topology.yaml"):
+            for argv in (["topo"], ["baseline", "--out", "unused.json"]):
+                with self.assertRaises(SystemExit) as cm:
+                    cli.main(argv)
+                self.assertIn("找不到默认拓扑", str(cm.exception.code))
 
     def test_advice_failure_still_raises(self):
         with tempfile.TemporaryDirectory() as d:

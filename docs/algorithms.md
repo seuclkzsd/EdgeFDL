@@ -1,6 +1,6 @@
 # Algorithms
 
-This page specifies the methods EdgeFDL uses, with the parameter values of release 0.1.1. Every value below is
+This page specifies the methods EdgeFDL uses, with the parameter values of release 0.1.2. Every value below is
 the default in the code; the file that holds it is named in each section. The component layout and data flow are
 in [architecture.md](architecture.md); measured accuracy, latency and robustness are in [results.md](results.md).
 

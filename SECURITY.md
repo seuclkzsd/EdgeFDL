@@ -4,7 +4,7 @@
 
 | Version | Security fixes |
 |---|---|
-| 0.1.x | Yes, in the latest 0.1 patch release (currently 0.1.1); please upgrade from 0.1.0 |
+| 0.1.x | Yes, in the latest 0.1 patch release (currently 0.1.2); please upgrade from earlier 0.1 releases |
 | Earlier snapshots (before the first release) | No, please upgrade to the latest 0.1.x |
 
 ## Reporting a vulnerability

@@ -35,7 +35,7 @@ These conditions apply to every table on this page unless a section states other
 
 | Item | Value |
 |---|---|
-| Version | Model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters), trained and measured with EdgeFDL 0.1.0. Release 0.1.1 reproduces the test-set evaluations and the baseline byte for byte, the self-test's long run and 84 scenarios with identical outcomes (latency, CPU and memory vary with the machine's load) and the robustness suite apart from its run time |
+| Version | Model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters), trained and measured with EdgeFDL 0.1.0. Release 0.1.1 reproduces the test-set evaluations and the baseline byte for byte, the self-test's long run and 84 scenarios with identical outcomes (latency, CPU and memory vary with the machine's load) and the robustness suite apart from its run time. Release 0.1.2 reproduces `results/eval_test.json` byte for byte and the self-test and robustness suite with the same outcomes |
 | Topology | [`configs/demo_topology.yaml`](../configs/demo_topology.yaml): 12 devices (routers `core`, `agg1`, `agg2`, `acc1`–`acc4`; hosts `h1`–`h4`; the network-management server `ems`), 15 links L1–L15 (1000 and 100 Mbps), Huawei/H3C vendor mix |
 | Monitored targets | 37: 29 interface addresses (25 router interfaces, 4 host addresses), 7 router loopbacks, and 1 NQA target that coverage planning adds for the backup link L3, which no EMS-side probe crosses |
 | Measurement plan | One round every 5 s: 5 pings to every target, traceroute paths, packet-train bandwidth estimate on 3 links per round, OSPF LSDB; detection window of 6 rounds |
@@ -352,7 +352,7 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
 | Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
-| Unit tests | `python -m unittest discover -s tests` | 71 tests | about 20 s |
+| Unit tests | `python -m unittest discover -s tests` | 72 tests | about 20 s |
 
 Notes:
 

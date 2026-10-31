@@ -18,10 +18,10 @@ def eval_markdown(m: Dict) -> str:
     lines = ["| 指标类别 | 样本数 | 类别识别准确率 | 故障类型准确率 | 定位准确率 | 类型+定位 | 设计指标 | 结论 |",
              "|---|---|---|---|---|---|---|---|"]
     for c, v in m["per_category"].items():
-        req = TARGETS.get(c)
-        ok = "" if req is None else ("达标" if v["category_acc"] >= req else "未达标")
+        target = TARGETS.get(c)
+        ok = "" if target is None else ("达标" if v["category_acc"] >= target else "未达标")
         lines.append(f"| {c} | {v['n']} | {_p(v['category_acc'])} | {_p(v['type_acc'])} | {_p(v.get('loc_acc'))} | "
-                     f"{_p(v.get('joint_acc'))} | {'≥' + format(req, '.0%') if req else '-'} | {ok} |")
+                     f"{_p(v.get('joint_acc'))} | {'≥' + format(target, '.0%') if target else '-'} | {ok} |")
     lines += ["", "| 故障类型 | 样本数 | 判决器触发率 | 类型准确率 | 定位准确率 | 平均精测次数 | 平均发现时延 s |",
               "|---|---|---|---|---|---|---|"]
     for t, v in m["per_type"].items():

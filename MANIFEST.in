@@ -1,0 +1,2 @@
+# The demo topology and the sample intake form: the default --topo and the tests read them.
+recursive-include configs *

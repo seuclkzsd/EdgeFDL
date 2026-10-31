@@ -6,7 +6,27 @@ All user-visible changes to EdgeFDL are recorded in this file. The format follow
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-10-30
+## [0.1.2] - 2026-10-31
+
+Patch release for packaging and documentation. No code of the engine, the training or the evaluation changed, and the
+released model `results/model.pt` and the result files in `results/` are those of 0.1.1: with 0.1.2 `results/eval_test.json`
+reproduces byte for byte, and the 72-hour-equivalent self-test and the robustness suite give the same outcomes (latency,
+CPU, memory and run time vary with the machine's load).
+
+### Fixed
+
+- `edgefdl topo`, `baseline`, `gen`, `train`, `vnet` and `pipeline`, run from an installed package outside the checkout
+  without a topology file, stop with a clear message instead of a `FileNotFoundError` traceback.
+- The source distribution contains `configs/`, which the default `--topo` and the tests read.
+- Comments and help texts no longer refer to documents that do not exist.
+
+### Changed
+
+- The release notes list the demo video among the assets.
+- The demo video's narration states the numeric goals as design targets, in the same words as the slides.
+- The suite has 72 tests.
+
+## [0.1.1] - 2026-10-31
 
 Patch release with fixes to the online engine, the REST API, the real-stack tooling and the documentation, and a
 hardened API. The released model `results/model.pt` and the result files in `results/` are unchanged: with 0.1.1 the
@@ -121,11 +141,11 @@ robustness suite reproduces `results/robust.json` apart from its run time.
 - The demo video `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 41 s) is attached to the
   [v0.1.1 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1).
 
-## [0.1.0] - 2026-10-30
+## 0.1.0 - 2026-10-30
 
 Not published as a release; its changes ship in 0.1.1.
 
-First release of EdgeFDL: autonomous link-level fault detection and localization for edge networks, running on the
+First version of EdgeFDL: autonomous link-level fault detection and localization for edge networks, running on the
 network-management server (EMS).
 
 ### Added
@@ -183,8 +203,7 @@ network-management server (EMS).
   [MAINTAINERS.md](MAINTAINERS.md), [ROADMAP.md](ROADMAP.md), [CITATION.cff](CITATION.cff), issue forms (bug report,
   feature request, report from a real network) and a pull request template, a CI workflow running
   `tools/dev/ci.sh`, a release workflow, and 34 unit tests.
-- **Demo video** `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 19 s) attached to the
-  [v0.1.0 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.0).
 
-[Unreleased]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/seuclkzsd/EdgeFDL/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1

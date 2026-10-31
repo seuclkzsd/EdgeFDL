@@ -42,7 +42,7 @@ def main():
     ap.add_argument("--static", action="store_true", help="不用 FRR，走静态路由回退")
     ap.add_argument("--loss", type=float, default=0.1,
                     help="丢包步取值。hello 1/dead 4 下 ≥20%% 时一步之内就可能出现真实的邻接抖动，"
-                         "冒烟默认取 10%%（见报告的抖动频率实测）")
+                         "冒烟默认取 10%%")
     ap.add_argument("--ospf", default="1,4", help="OSPF hello,dead 秒")
     a = ap.parse_args()
 

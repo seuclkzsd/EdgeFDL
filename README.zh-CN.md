@@ -69,7 +69,7 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 | 指标自测 | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 轮 × 5 s = 72 小时仿真时间 |
 | 鲁棒性测试 | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | 40 个工作进程约 3.5 分钟 |
 | 真实协议栈 | `scripts/lab.sh build && scripts/lab.sh smoke` | 需要 Docker 与特权容器；26 项检查 |
-| 单元测试 | `python -m unittest discover -s tests` | 71 个测试 |
+| 单元测试 | `python -m unittest discover -s tests` | 72 个测试 |
 
 流水线会在 `runs/v6/` 训练一个新模型，它与发布的模型并不相同；本页的数据都是用 `results/model.pt` 测得的，评估这个模型包可原样复现测试集结果。实验容器镜像基于 Debian 12，安装
 FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用本地 Debian 镜像源。
@@ -154,7 +154,7 @@ EdgeFDL 以 [Apache License 2.0](LICENSE) 发布；署名与第三方组件见 [
   author  = {seuclkzsd},
   title   = {EdgeFDL: Edge-network Fault Detection and Localization},
   year    = {2026},
-  version = {0.1.1},
+  version = {0.1.2},
   url     = {https://github.com/seuclkzsd/EdgeFDL},
   license = {Apache-2.0}
 }
@@ -162,7 +162,7 @@ EdgeFDL 以 [Apache License 2.0](LICENSE) 发布；署名与第三方组件见 [
 
 ## 局限与后续工作
 
-- 在 v0.1.1 中，`serve` 测量的是等价虚拟网络（`sim`、`netns` 或 `lxd` 后端）；接入物理网络是路线图的第一项。
+- 在 v0.1.2 中，`serve` 测量的是等价虚拟网络（`sim`、`netns` 或 `lxd` 后端）；接入物理网络是路线图的第一项。
   准确率与鲁棒性数据来自解析仿真后端与 12 设备演示拓扑。真实协议栈（netns + FRR + tc）通过冒烟测试验证，尚未做准确率
   测试；LXD 后端已验证生成的命令（不执行），尚未在硬件上运行。
 - 恶劣条件（ICMP 限速、忙时时延抬升、长时干扰）由我们建模，不是在生产网络上实测的。72 小时数据是仿真时间；72 小时实时

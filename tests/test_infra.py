@@ -22,6 +22,7 @@ from edgefdl.vnet.sim import SimBackend  # noqa: E402
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 TOPO = os.path.join(ROOT, "configs", "demo_topology.yaml")
 INTAKE = os.path.join(ROOT, "configs", "intake_demo")
+MODEL = os.path.join(ROOT, "results", "model.pt")
 
 
 def demo_dict():
@@ -278,9 +279,10 @@ class ReproducibilityTest(unittest.TestCase):
 
 
 class BundleLoadTest(unittest.TestCase):
+    @unittest.skipUnless(os.path.exists(MODEL), "无模型")
     def test_released_bundle_loads(self):
         from edgefdl.agent.ddqn import Agent
-        ag = Agent.load(os.path.join(ROOT, "results", "model.pt"))
+        ag = Agent.load(MODEL)
         self.assertIn("topology", ag.meta)
 
     def test_untrusted_objects_rejected(self):

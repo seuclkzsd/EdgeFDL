@@ -8,7 +8,7 @@
 使等价虚拟网络与物理网络互联互通。
 
 命令执行与 netns 共用 KernelStackBackend，只是改为 `lxc exec <容器> -- ...`。
-没有 LXD 的机器上默认 dry_run：只生成命令序列（审阅部署脚本、写进交付文档）。
+没有 LXD 的机器上默认 dry_run：只生成命令序列，审阅后再到现场执行。
 离线环境：在联网机器上执行 image_commands() 制作节点镜像后 `lxc image export`，
 到边缘网管服务器 `lxc image import` 即可，无需外网。
 """

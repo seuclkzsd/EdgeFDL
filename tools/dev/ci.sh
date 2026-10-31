@@ -266,6 +266,7 @@ for lic in ("LICENSE", "NOTICE"):
         assert any(n.startswith(info) and n.endswith("/" + lic) for n in names), f"wheel lacks {lic}"
 snames = tarfile.open(sdist[0]).getnames()
 assert f"edgefdl-{v}/edgefdl/core/web/index.html" in snames, "sdist lacks the dashboard"
+assert f"edgefdl-{v}/configs/demo_topology.yaml" in snames, "sdist lacks the demo topology"
 print(f"dist: {Path(whl[0]).name} ({len(names)} files), {Path(sdist[0]).name} ({len(snames)} files)")
 PY
   # The wheel on its own: a fresh environment (dependencies from the running interpreter), the
@@ -336,6 +337,7 @@ notes = f"""{body}
 | `edgefdl-{v}-py3-none-any.whl`, `edgefdl-{v}.tar.gz` | the Python package (wheel and source distribution) |
 | `edgefdl-demo-model.pt` | the released model bundle for the demo topology (`results/model.pt`: weights, topology, baseline, measurement plan) |
 | `edgefdl-{v}-results.tar.gz` | `results/` of this release: model bundle, evaluation, self-test and robustness results, pipeline log, real-stack smoke logs |
+| `EdgeFDL-demo-zh.mp4` | the demo video (Chinese narration), attached by hand after the workflow |
 | `SHA256SUMS` | SHA-256 checksums of the files above |
 
 Check the downloads with `sha256sum -c SHA256SUMS` (add `--ignore-missing` to check only the files you downloaded).

@@ -38,7 +38,7 @@ VIOLET = "#6250d6"
 HOST = "#898781"
 
 # Design targets (category -> minimum type + location accuracy).
-REQ = {"链路中断": 0.98, "性能劣化": 0.95, "路由漂移": 0.95}
+TARGETS = {"链路中断": 0.98, "性能劣化": 0.95, "路由漂移": 0.95}
 
 
 def hop_layout(topo):
@@ -179,23 +179,23 @@ def draw_topology(ax, topo):
 def draw_results(ax, ax_kpi, ev, bench):
     cat, typ = ev["per_category"], ev["per_type"]
     rows = [  # label, value, target or None, is_category
-        ("Link down", cat["链路中断"]["joint_acc"], REQ["链路中断"], True),
-        ("Performance\ndegradation", cat["性能劣化"]["joint_acc"], REQ["性能劣化"], True),
+        ("Link down", cat["链路中断"]["joint_acc"], TARGETS["链路中断"], True),
+        ("Performance\ndegradation", cat["性能劣化"]["joint_acc"], TARGETS["性能劣化"], True),
         ("delay", typ["delay"]["joint_acc"], None, False),
         ("loss", typ["loss"]["joint_acc"], None, False),
         ("jitter", typ["jitter"]["joint_acc"], None, False),
         ("bandwidth", typ["bandwidth"]["joint_acc"], None, False),
-        ("Route drift", cat["路由漂移"]["joint_acc"], REQ["路由漂移"], True),
+        ("Route drift", cat["路由漂移"]["joint_acc"], TARGETS["路由漂移"], True),
     ]
     lo, hi = 90.0, 100.0
     n = len(rows)
-    for i, (label, v, req, is_cat) in enumerate(rows):
+    for i, (label, v, target, is_cat) in enumerate(rows):
         y = n - 1 - i
         ax.plot([lo, hi], [y, y], color=GRID, lw=1.0, zorder=1)
-        if req is not None:
-            ax.plot([req * 100, req * 100], [y - 0.32, y + 0.32], color=INK, lw=2.2, zorder=3,
+        if target is not None:
+            ax.plot([target * 100, target * 100], [y - 0.32, y + 0.32], color=INK, lw=2.2, zorder=3,
                     solid_capstyle="butt")
-            ax.text(req * 100, y - 0.38, "≥%g%%" % (req * 100), fontsize=9.5, color=INK2, ha="center",
+            ax.text(target * 100, y - 0.38, "≥%g%%" % (target * 100), fontsize=9.5, color=INK2, ha="center",
                     va="top", zorder=3)
         ax.plot([lo, v * 100], [y, y], color=BLUE if is_cat else BLUE_LIGHT, lw=2.0, zorder=2)
         ax.scatter([v * 100], [y], s=110 if is_cat else 70, c=BLUE if is_cat else BLUE_LIGHT,

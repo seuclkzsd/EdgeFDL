@@ -5,7 +5,7 @@ equivalent virtual network, training the per-network model, running the online s
 server (EMS), and connecting its alarms to the systems you already use. For a first look at the system, start with
 the [quick start](quickstart.md).
 
-**Scope of 0.1.1.** `serve` measures the equivalent virtual network of the site through one of the three backends
+**Scope of 0.1.2.** `serve` measures the equivalent virtual network of the site through one of the three backends
 (`sim`, `netns`, `lxd`); measuring the production network itself is the first step of the
 [roadmap](../ROADMAP.md) ([section 8](#8-scope-of-v01-and-next-steps)). With this release you describe the network,
 train and evaluate its model, and run the online service, its alarms and its integrations against the equivalent
@@ -159,7 +159,7 @@ operator configures it once on the end device and EdgeFDL only reads its results
 Read the topology file once more before training. It is the single source of truth for the virtual network, the
 features, the alarms and the remediation advice, and the format is described in
 [architecture, topology file](architecture.md#topology-file). Parallel links between the same two devices are not
-supported in 0.1.1.
+supported in 0.1.2.
 
 ## 3. Build the equivalent network and train the model
 
@@ -264,7 +264,7 @@ online scenarios, inference latency and probe overhead.
 
 ## 4. Run the online service
 
-In 0.1.1 the online service measures the site's equivalent virtual network. Run the site model on it with the
+In 0.1.2 the online service measures the site's equivalent virtual network. Run the site model on it with the
 alarm sinks that the site uses, inject faults from the dashboard or through `POST /api/inject`, and check that the
 alarms, the advice and the integrations behave as expected:
 
@@ -460,7 +460,7 @@ There is no telemetry and no update check. The full statement, with the environm
 
 ## 7. Checklist before going live
 
-In 0.1.1 the checklist applies to the service running on the site's equivalent network, and it is the starting
+In 0.1.2 the checklist applies to the service running on the site's equivalent network, and it is the starting
 point for the connection to the physical network on the roadmap.
 
 - [ ] `topo` shows the expected devices and links and lists the blind links. The virtual backends emulate their NQA
@@ -478,7 +478,7 @@ point for the connection to the physical network on the roadmap.
 
 ## 8. Scope of v0.1 and next steps
 
-- In 0.1.1, `serve` takes its measurements from one of the three backends, which all realise the equivalent
+- In 0.1.2, `serve` takes its measurements from one of the three backends, which all realise the equivalent
   virtual network. The measurement data model and the CSV schema are shared by all backends, and the ping and
   traceroute commands with their parsers run on the EMS, so they carry over to production devices unchanged;
   packet trains and deep probes run between the two ends of a link and need a probe endpoint there. Running the

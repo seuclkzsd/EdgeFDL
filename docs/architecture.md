@@ -138,7 +138,7 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 
 | Module | Responsibility |
 |---|---|
-| [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.1`) and the `python -m edgefdl` entry point. |
+| [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.2`) and the `python -m edgefdl` entry point. |
 | [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
 | [`edgefdl/topology.py`](../edgefdl/topology.py) | Topology data model (`Node`, `Link`, `Target`), validation of names, IDs and addresses, automatic /30 and loopback planning, deterministic OSPF shortest paths, forward and return route of every target, monitoring targets and coverage planning. |
 | [`edgefdl/intake/form.py`](../edgefdl/intake/form.py) | Requirements form (YAML) plus device configurations and LLDP → topology; form template. |

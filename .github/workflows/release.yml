@@ -5,14 +5,14 @@
 # check, build the sdist and the wheel, and publish a GitHub Release whose notes are that CHANGELOG
 # section, with the packages, the demo model bundle (results/model.pt as edgefdl-demo-model.pt), a
 # tarball of results/ and SHA256SUMS:
-#   git tag -a v0.1.0 -m "EdgeFDL 0.1.0" && git push origin v0.1.0
+#   git tag -a vX.Y.Z -m "EdgeFDL X.Y.Z" && git push origin vX.Y.Z
 # Started by hand (workflow_dispatch), the workflow is a dry run, also when started on a tag: the
 # same checks and builds, the release assets kept as a workflow artifact for 14 days, nothing
 # published (only a tag push runs the publish job). Every step is a step of tools/dev/ci.sh:
 # `tools/dev/ci.sh release` prepares the same assets locally in build/release/.
 # A release that already exists (created by hand) keeps its notes; the workflow uploads (replaces)
 # its assets. Media too large for the repository are attached by hand, e.g. the demo video:
-#   gh release upload v0.1.0 EdgeFDL-demo-zh.mp4
+#   gh release upload vX.Y.Z EdgeFDL-demo-zh.mp4 SHA256SUMS --clobber   # SHA256SUMS with the video added
 # Actions are pinned to commit SHAs, their release tag in the comment.
 name: Release
 

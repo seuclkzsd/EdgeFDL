@@ -22,7 +22,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python3 -m venv .venv && . .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu    # CPU-only PyTorch (a much smaller download)
 pip install -r requirements.txt                                       # numpy, pyyaml, torch, psutil
-python -m edgefdl --version                                           # edgefdl 0.1.1
+python -m edgefdl --version                                           # edgefdl 0.1.2
 ```
 
 - The CPU-only PyTorch line is optional but recommended: EdgeFDL never uses a GPU, and the default PyTorch wheel for
@@ -31,7 +31,7 @@ python -m edgefdl --version                                           # edgefdl 
 - `pip install -e .` additionally installs an `edgefdl` command (`edgefdl --version`). Keep working from the
   checkout: the demo topology (`configs/`) and the released model (`results/`) live in the repository, not in the
   Python package.
-- Check the installation with the unit tests (71 tests, about 20 s):
+- Check the installation with the unit tests (72 tests, about 20 s):
 
   ```bash
   python -m unittest discover -s tests
@@ -261,7 +261,7 @@ The FRR configuration files are generated in a temporary directory that is remov
 | `POST /api/inject` returns HTTP 400, for example `{"error": "loss 的 value 须大于 0 且不超过 1（丢包率），收到 5"}` | The value is outside the accepted range; the ranges and messages are listed in [api.md](api.md#post-apiinject-and-post-apiclear) |
 | `serve` stops at start with `edgefdl: --sinks 配置有误：Webhook 地址须为以 http:// 或 https:// 开头的完整 URL…` or another `--sinks 配置有误` message | `--sinks` is checked at start: a Webhook needs a complete `http://` or `https://` URL, a Syslog sink a `host` and a port from 1 to 65535, and only the types `webhook` and `syslog` exist ([Deployment, alarm sinks](deployment.md#alarm-sinks)) |
 | No alarm after injecting a fault | The value is below what the light probes detect (one-way loss below about 3%, bandwidth above about 70% of the baseline), or a route drift does not move any monitored path (and route drift applies to router–router links only). Wait longer for bandwidth faults. Use values in the trained ranges of [section 3](#3-inject-a-fault-and-read-the-alarm) |
-| `FileNotFoundError: …/configs/demo_topology.yaml` | EdgeFDL was installed with `pip install .` and run outside the checkout, so the default topology path does not exist. Run from the repository, install with `pip install -e .`, or pass `--topo` |
+| `edgefdl: 找不到默认拓扑 configs/demo_topology.yaml…` | EdgeFDL was installed from the wheel or with `pip install .` and run outside the checkout, so the default topology is not there. Run from the repository, install with `pip install -e .`, or name a topology file (`--topo`, or the positional argument of `topo`) |
 | The PyTorch download is very large | The default Linux wheel includes CUDA. Install the CPU build first (section 1) |
 | `pipeline`, `robust` or `gen` uses too many CPUs | Lower `--workers` (sample generation, robustness jobs) and `--threads` (training). Sample sets do not depend on `--workers` |
 | `scripts/lab.sh build` is slow or cannot reach the Debian mirror | Set `EDGEFDL_APT_MIRROR` to a reachable Debian mirror host, for example `EDGEFDL_APT_MIRROR=mirrors.example.org scripts/lab.sh build` |
