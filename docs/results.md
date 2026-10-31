@@ -11,6 +11,7 @@ the command that reproduces each table. All numbers come from the files in [`res
 - [1. Independent test set](#1-independent-test-set)
 - [2. Self-test: latency, overhead, long run, online scenarios](#2-self-test-latency-overhead-long-run-online-scenarios)
 - [3. Real protocol stack smoke test](#3-real-protocol-stack-smoke-test)
+- [3.1 Online accuracy on the real protocol stack](#31-online-accuracy-on-the-real-protocol-stack)
 - [4. Robustness](#4-robustness)
 - [5. How to reproduce](#5-how-to-reproduce)
 - [6. Raw data](#6-raw-data)
@@ -26,6 +27,7 @@ the command that reproduces each table. All numbers come from the files in [`res
 | Noise immunity | 72-hour-equivalent run with a transient in 15% of rounds: 214 detector triggers, 0 false alarms, 0 engine errors | [2](#2-self-test-latency-overhead-long-run-online-scenarios) |
 | Online scenarios | 84/84 correct alarms (type and link); mean time to alarm 37.9 s, mean time to clear after repair 19.3 s | [2](#2-self-test-latency-overhead-long-run-online-scenarios) |
 | Real protocol stack | Linux namespaces + FRR OSPF + tc: 26/26 checks in each of 3 runs; baseline RTT of all 37 targets within 0.74 ms of the simulator | [3](#3-real-protocol-stack-smoke-test) |
+| Accuracy on the real protocol stack | 84/84 single-fault scenarios with the right type and link, all cleared, mean time to alarm 37.9 s; device down 6/6; two faults: first alarm right 16/16, both reported 15/16; 0 false alarms in 2.7 network hours | [3.1](#31-online-accuracy-on-the-real-protocol-stack) |
 | Harsh conditions | 16 long-run conditions of 24 h each: 0 false alarms in 12 of them, at most 9 in 24 h (transients lasting 15 s) | [4.1](#41-long-runs-and-scenarios-under-harsh-conditions) |
 | Concurrent faults | Two simultaneous link faults (300 trials): first alarm correct 100%, both reported 97.67%; device down (60 trials): one device-level alarm every time | [4.4](#44-multiple-faults) |
 
@@ -39,7 +41,7 @@ These conditions apply to every table on this page unless a section states other
 | Topology | [`configs/demo_topology.yaml`](../configs/demo_topology.yaml): 12 devices (routers `core`, `agg1`, `agg2`, `acc1`–`acc4`; hosts `h1`–`h4`; the network-management server `ems`), 15 links L1–L15 (1000 and 100 Mbps), Huawei/H3C vendor mix |
 | Monitored targets | 37: 29 interface addresses (25 router interfaces, 4 host addresses), 7 router loopbacks, and 1 NQA target that coverage planning adds for the backup link L3, which no EMS-side probe crosses |
 | Measurement plan | One round every 5 s: 5 pings to every target, traceroute paths, packet-train bandwidth estimate on 3 links per round, OSPF LSDB; detection window of 6 rounds |
-| Backend | `sim`, the analytic simulator of the equivalent virtual network, for the independent test set, the self-test and the robustness suite. These run in **simulated time**: each 5 s round is computed without waiting, so "72 hours" means 51,840 rounds. The real protocol stack (`netns` backend) is exercised by the smoke test in section 3 |
+| Backend | `sim`, the analytic simulator of the equivalent virtual network, for the independent test set, the self-test and the robustness suite. These run in **simulated time**: each 5 s round is computed without waiting, so "72 hours" means 51,840 rounds. The real protocol stack (`netns` backend) is exercised by the smoke test of section 3 and measured in wall-clock time in section 3.1, which has its own conditions |
 | Seeds | Baseline 1; training samples 1, validation samples 2, independent test set 3, domain-randomized test set 4; training 0; self-test 7; robustness 21 |
 | Machine | 2 × Intel Xeon Gold 6336Y (96 logical CPUs), Linux; Python 3.13.5; PyTorch 2.9.1, a CUDA 12.8 build run on the CPU (no GPU used) |
 | Training | 60,000 trigger-aligned, domain-randomized samples generated in 87.8 s with 16 processes; 15,000 iterations with 512 parallel episodes in about 4.4 minutes on 8 CPU threads |
@@ -177,6 +179,153 @@ per-round mean RTT, the estimate the baseline uses. All 37 targets are reachable
 absolute RTT difference is at most 0.74 ms (target `L3.agg1`), with a median of 0.39 ms and a 90th percentile of
 0.52 ms (kernel 5.15, FRR 8.4.4, OSPF converged in 10.8 s). Raw data:
 [`results/sim_vs_stack.json`](../results/sim_vs_stack.json).
+
+### 3.1 Online accuracy on the real protocol stack
+
+[`scripts/realstack_eval.py`](../scripts/realstack_eval.py) runs the online engine of `serve`, with the released model
+`results/model.pt`, on the `netns` backend and scores it the way the self-test of section 2 does: the same 84
+single-fault scenarios, the same fault sizes, the same engine defaults. The network is not simulated: OSPF routes come
+from FRR, traffic crosses veth pairs and `tc` queues, and the probes are real `ping`, `traceroute`, UDP packet trains
+and iperf3. Time is wall-clock: one round every 5 s, the fault injected at a random moment between two rounds, time to
+alarm counted from the injection to the alarm. Raw data: [`results/realstack.json`](../results/realstack.json) (one
+record per scenario: expected and alarmed type and link, time to alarm, whether and when the alarm cleared, every alarm
+raised) and [`results/realstack/`](../results/realstack/) (gzipped CSV logs).
+
+| Condition | Value |
+|---|---|
+| Network | Demo topology: 12 network namespaces, 15 veth links with `tc` netem and tbf reproducing their delay and bandwidth, FRR 8.4.4 (`zebra`, `ospfd`) on the 7 routers, OSPF hello 1 s, dead 4 s |
+| Engine | `serve` defaults: confirmation 2, concurrent alarms, 5 s round, PyTorch engine with 1 thread |
+| Model | `results/model.pt`, unchanged, trained on the simulator (SHA-256 `7d322677362e350e…`) |
+| Baseline | Learned on the stack before the run, 40 rounds plus 3 deep probes per link, the procedure of `serve --learn-rounds` (see below) |
+| Faults | As in section 2: link down; delay +20 ms; loss 15%; jitter 15 ms; bandwidth reduced to 20%; route drift with the largest cost factor that moves a monitored path |
+| Scenario | OSPF and all targets stable; 6 fault-free rounds; fault injected; at most 60 rounds to the alarm; fault repaired; at most 60 rounds to the alarm clearing |
+| Disturbance | None injected during the scenarios (section 2 adds a transient in 15% of rounds); no background traffic |
+| Host | 2 × Intel Xeon Gold 6336Y (shared machine, 1-minute load average 9–88 of 96 logical CPUs), kernel 5.15.0-139-generic, Debian 12 container, Python 3.11.2, PyTorch 2.9.1+cpu |
+| Parallelism | 12 privileged containers, each with its own namespaces and FRR instances, pinned to 2 logical CPUs |
+
+**Single faults: 84/84 alarms with the right type and link, each cleared after the repair, no other alarm raised.**
+
+| Fault type | Scenarios | Alarmed | Type right | Type + link right | Mean time to alarm | Max time to alarm | Alarm cleared | Mean time to clear |
+|---|---|---|---|---|---|---|---|---|
+| Link down | 15 | 15 | 15 | 15 (100.0%) | 29.8 s | 40.59 s | 15 | 13.7 s |
+| Delay | 15 | 15 | 15 | 15 (100.0%) | 33.2 s | 40.01 s | 15 | 14.9 s |
+| Loss | 15 | 15 | 15 | 15 (100.0%) | 39.5 s | 51.9 s | 15 | 17.7 s |
+| Jitter | 15 | 15 | 15 | 15 (100.0%) | 33.9 s | 38.21 s | 15 | 14.9 s |
+| Bandwidth | 15 | 15 | 15 | 15 (100.0%) | 57.8 s | 69.91 s | 15 | 31.2 s |
+| Route drift | 9 | 9 | 9 | 9 (100.0%) | 29.7 s | 38.88 s | 9 | 14.6 s |
+| **All** | 84 | 84 | 84 | 84 (100.0%) | 37.9 s | 69.91 s | 84 | 18.1 s |
+
+| Category | Target | Scenarios | Type + link right |
+|---|---|---|---|
+| Link down | ≥ 98% | 15 | 15/15 (100.0%) |
+| Performance degradation | ≥ 95% | 60 | 60/60 (100.0%) |
+| Route drift | ≥ 95% | 9 | 9/9 (100.0%) |
+
+Mean time to alarm, real stack against the simulated-time self-test. The self-test counts whole rounds; here the fault
+falls between two rounds:
+
+| Fault type | Real stack | Simulator (section 2) |
+|---|---|---|
+| Link down | 29.8 s | 30.0 s |
+| Delay | 33.2 s | 34.7 s |
+| Loss | 39.5 s | 37.3 s |
+| Jitter | 33.9 s | 34.3 s |
+| Bandwidth | 57.8 s | 58.0 s |
+| Route drift | 29.7 s | 30.0 s |
+| All | 37.9 s | 37.9 s |
+
+Bandwidth is the slowest on both, for the reason given in section 2. 0 alarms were raised in the 504 fault-free rounds
+that precede the faults. The OSPF adjacency of every router–router link stayed Full through the delay, loss, jitter,
+bandwidth and drift scenarios.
+
+**Device down and two simultaneous faults.** Same procedure and same judgement as section 4.4, with the code of
+`edgefdl/robust.py`: faults held for 24 rounds for device down, 40 rounds for two faults, then 24 rounds after repairing
+one of the two (section 4.4 watches 60). The pairs come from the generator of that suite with seed 21.
+
+| Metric | Device down | Two link faults |
+|---|---|---|
+| Trials | 6 | 16 |
+| First alarm correct (type and link or device) | 6/6 | 16/16 |
+| All faults reported | 6/6 | 15/16 |
+| No wrong alarm | 6/6 | 16/16 |
+| Mean time to first alarm (whole rounds) | 31.7 s | 35.9 s |
+| Both alarms active, then one fault repaired correctly | – | 15/15 |
+| All alarms cleared after repairing everything | 6/6 | 16/16 |
+
+The trial with a fault not reported: delay on L9 + link down on L15, where only link down on L15 was reported. With the
+management uplink down the EMS has no data plane to measure the other fault with (see
+[limitations](#limitations-and-next-steps)).
+
+**Fault-free periods.** After the scenarios, each container ran the engine with no fault. Half of them also applied, on
+real links, the transients of section 2: in 15% of rounds, a delay spike of 10–150 ms or a loss burst of 20–80% on a
+random link for that one measurement round (143 transients in all). The 30 agent decisions in the first row come from
+the container described under equal-cost paths below.
+
+| Condition | Network hours | Rounds | Detector triggers | Judged normal by the agent | False alarms |
+|---|---|---|---|---|---|
+| No transients | 1.33 | 960 | 1 | 30 | **0** |
+| Transients in 15% of rounds | 1.33 | 960 | 8 | 7 | **0** |
+
+These are hours, not the days of the 72-hour simulated run; the real-time 72-hour test stays on the
+[roadmap](../ROADMAP.md).
+
+**The engine in real time**, over 4,766 rounds in all containers: 0 engine errors; 0 network rebuilds; light measurement
+traffic 336.8 kbps per network, 0.337% of a 100 Mbps link if all of it crossed that link (target < 5%, deep probes
+excluded: 111 deep probes in all); one forward pass p99 at most 2.746 ms over 688 passes (target ≤ 100 ms); engine plus
+probe processes 11.6% of one core (target ≤ 20% of the server); RSS 236 MB with the CPU build of PyTorch. A measurement
+round takes 1.14 s on average. 47 of the 4,766 rounds took longer than 5 s, at most 12.3 s, nearly all of them rounds
+with a deep probe, which on a link that is down waits for its packet trains to time out; the next round then starts at
+once.
+
+**Where the stack differs from the simulator.**
+
+- *Equal-cost paths.* The kernel splits traffic over equal-cost OSPF paths, and the simulator picks one. On the demo
+  topology this concerns one target: `L3.agg2` is 25 away from `core` over both `agg1` and `agg2`; the simulator's
+  baseline has `core>agg2`, and the kernel on this machine used `core>agg1>agg2`. With the baseline bundled in the
+  model, that target's path counts as changed in every round and the detector stays active, so the agent is woken by the
+  periodic re-check and not by a detector trigger. A baseline learned on the network has the path the network really
+  uses, which is why a deployment runs `--learn-rounds` ([deployment guide](deployment.md)) and why this run does. For
+  comparison, the same 84 scenarios with the bundled baseline (`--learn-rounds 0`): 84/84 right, 84 alarmed, mean time
+  to alarm 38.4 s. The kernel can also move such a target to the other equal-cost path after OSPF re-converges: this
+  happened in 1 of the 12 containers. The detector then stays active on those targets, in that container for all 180
+  rounds of its fault-free period, and the agent judged the network normal at each of its 30 periodic checks, so no
+  alarm was raised. The state lasts until the path moves back or the baseline is learned again.
+- *Packet trains under jitter.* The simulator's bandwidth estimate ignores jitter. On the stack, per-packet jitter much
+  larger than the serialization time scatters a train; the estimator discards trains that arrive out of order
+  ([algorithms, 2.2](algorithms.md#22-packet-train-bandwidth-estimate)), so a link with jitter has no light bandwidth
+  estimate for that round.
+- *Link down.* A packet train over a link that is down returns nothing, where the simulator reports 0 Mbps. The control
+  plane and the unreachable end addresses carry the diagnosis.
+
+**Shards do not disturb each other.** The containers share one kernel, and ICMP error generation, which traceroute
+relies on, is limited by a kernel-wide token bucket, so the rounds of the containers are offset by a fixed phase. In the
+fault-free periods without transients, the median RTT of a target differs across the 6 containers by 0.028 ms (median
+over 37 targets) and by at most 1.012 ms: that maximum is `L3.agg1` in the container whose equal-cost path moved, and
+with that container left out the maximum is 0.04 ms. 0 of 177,600 pings were lost and 0 of 34,560 traceroutes came back
+incomplete.
+
+**Scope of this result.** Links are emulated by `tc` on one host: there is no real NIC, no vendor OSPF implementation,
+no background traffic. Each fault type was tested at one size on one topology. The harsh conditions of section 4 have
+not been repeated on the stack, and heavy loss (≥ 30%), which makes OSPF adjacencies flap, is not among these scenarios.
+Hardware deployment is on the [roadmap](../ROADMAP.md).
+
+Reproduce (about 45 minutes with 12 containers; the image adds CPU PyTorch to the lab image):
+
+```bash
+export EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest
+EDGEFDL_LAB_TORCH=1 scripts/lab.sh build
+EDGEFDL_SHARDS=8 scripts/realstack_run.sh runs/realstack/a \
+    --sets single,normal --learn-rounds 40 --normal-rounds 180 --noise 0.15
+EDGEFDL_SHARDS=4 EDGEFDL_PHASE=0.3 scripts/realstack_run.sh runs/realstack/b \
+    --sets node,dual,normal --learn-rounds 40 --dual 16 --dual-after 40 --dual-repair 24 --normal-rounds 120 --noise 0.15
+EDGEFDL_SHARDS=8 EDGEFDL_PHASE=0.15 scripts/realstack_run.sh runs/realstack/c --sets single   # bundled baseline
+python3 scripts/realstack_eval.py merge runs/realstack/a runs/realstack/b runs/realstack/c \
+    --out runs/realstack/realstack.json --raw runs/realstack/raw
+python3 scripts/realstack_eval.py table runs/realstack/realstack.json
+```
+
+Optional: `EDGEFDL_CPUSETS="24-25 26-27 ..."` pins the containers to those CPUs. Use `cpuset`, not a CPU quota: the
+stalls of a quota appear in the measurements as network delay.
 
 ## 4. Robustness
 
@@ -351,6 +500,7 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Self-test (72-hour equivalent) | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | `runs/bench/bench.json` | about 5 minutes, single process |
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
+| Accuracy on the real protocol stack | see [section 3.1](#31-online-accuracy-on-the-real-protocol-stack) | `runs/realstack/realstack.json`, as `results/realstack.json` (times and traffic vary between runs) | about 45 minutes with 12 containers |
 | Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
 | Unit tests | `python -m unittest discover -s tests` | 72 tests | about 20 s |
 
@@ -386,14 +536,17 @@ Notes:
 | [`results/pipeline.log`](../results/pipeline.log) | Console log of sample generation, training and evaluation |
 | [`results/smoke/`](../results/smoke/) | Section 3, three runs |
 | [`results/sim_vs_stack.json`](../results/sim_vs_stack.json) | Section 3, per-target RTT of the real stack and the simulator |
+| [`results/realstack.json`](../results/realstack.json) | Section 3.1, every scenario, trial and fault-free run on the real stack |
+| [`results/realstack/`](../results/realstack/) | Section 3.1, gzipped `measure_log.csv` of the 84 scenarios (`*_measure.csv.gz`) and `alarm_log.csv` of all containers (`*_alarm.csv.gz`) |
 
 The file formats and the JSON keys, including an English glossary of the Chinese keys and condition names, are
 documented in [`results/README.md`](../results/README.md).
 
 ## Limitations and next steps
 
-- All accuracy and robustness numbers come from the analytic simulation backend on the 12-device demo topology. The real
-  protocol stack (netns + FRR + tc) is validated by the smoke test, not yet by accuracy runs; for the LXD backend the
+- The accuracy and robustness numbers of sections 1, 2 and 4 come from the analytic simulation backend on the 12-device
+  demo topology. Section 3.1 measures the 84 scenarios, device-down and two-fault cases on the real protocol stack
+  (netns + FRR + tc), with emulated links, one fault size per type and no background traffic. For the LXD backend the
   command generation is verified (dry run) and has not yet run on hardware.
 - The harsh conditions of section 4 (ICMP rate limiting, busy-hour drift, long transients) are modelled by us, not
   measured on production networks. The 72-hour figure is simulated time; a 72-hour real-time stress test is planned.
