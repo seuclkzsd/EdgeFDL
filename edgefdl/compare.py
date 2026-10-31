@@ -3,7 +3,8 @@
 """同台对比：未改动的 EdgeFDL 在线引擎 vs 现有工具与研究背后的方法（按公开描述重新实现）。
 
 所有方法吃同一条 RoundResult 流：引擎 step() 时在后端 measure_round 上挂一个只读旁路（Recorder），
-记下引擎看到的每一轮测量；基线方法随后在记录上逐轮、不看未来地回放，同种子、同瞬时干扰、同故障。
+记下引擎看到的每一轮轻量测量；基线方法随后在记录上逐轮、不看未来地回放，同种子、同瞬时干扰、同故障。
+EdgeFDL 还可以调用精测，基线方法不回放精测；对照行 edgefdl_no_deep 关掉全部精测，输入才与基线方法相同。
 
 基线方法（均只读测量，不调用精测）：
   threshold   逐目标阈值告警（Prometheus for: / Zabbix 触发器）：每目标一条告警，不指名链路
@@ -17,7 +18,8 @@
 改道后按路径代数折算的期望 RTT、与引擎同样的 RTT 基线跟踪（η=1/360）和背景丢包跟踪。"+ems" 变体再加三条规则：
 OSPF 邻接断开、开销变化（连续 2 轮）、带宽估计连续 2 次低于基线 70%，门限与 EdgeFDL 判决器相同。
 默认参数取典型配置或论文值；tuned 在不同种子的验证集上网格搜索取 F1 最优，lowfa 取验证集误报 ≤1 条/天里 F1 最优的
-一组（运维实际会用的工作点），再到测试集评分。EdgeFDL 另跑一遍不用精测的版本（edgefdl_no_deep）。
+一组（运维实际会用的工作点），再到测试集评分。NetBouncer 另报告只改 λ 的各点：验证集分不开的设置结果并不相同。
+EdgeFDL 在每个条件、每个种子上另跑一遍不用精测的版本（edgefdl_no_deep，含正常运行的误报统计）。
 口径见 docs/comparison.md。
 """
 from __future__ import annotations
@@ -557,8 +559,8 @@ def infer_nb(ev: Evidence, s: int, e: int, p: Dict) -> Dict:
         use = sent > 0
         y = recv[use] / np.maximum(sent[use], 1)
         bl = np.zeros(ev.L, bool)
-        if len(y) and y.min() < thr ** 2:                # 否则任何 x_i<thr 都只会抬高代价（x>0.5 时），不必迭代
-            x = nb_loss(A[use], y, lam)
+        if len(y) and y.min() < 1:                       # 全部无丢包时 x=1 代价为 0，不必迭代；别的门限都会改变结果：
+            x = nb_loss(A[use], y, lam)                  # 只穿越一次的链路 y≈x，λ 小时网格还会把略高于 thr 的 y 取整到 thr
             bl = x <= thr
         ew = ev.e[lo:r + 1]
         ok = np.isfinite(ew).any(0) & A.any(1)
@@ -660,7 +662,8 @@ DEFAULTS = {
 
 
 def grids() -> Dict[str, List[Dict]]:
-    """各方法的网格。持续判据到 24 轮、丢包门限到 4/5、λ 与窗口都留出了边界余量：最优点落在网格边缘时结论不可信。"""
+    """各方法的网格。边缘不全是余量：选中点可能落在边缘，grid_edges() 把这种情况记进 compare.json，docs/comparison.md
+    逐条写明。有的边缘不能再外推（hit=1.0、k=n=24 的 2 分钟持续判据、论文取值 tau=0.01），有的只是搜索范围到此为止。"""
     kn = ((1, 1), (2, 3), (3, 3), (3, 6), (4, 6), (6, 6), (9, 12), (12, 12), (18, 24), (24, 24))
     kn2 = kn[2:]
     lo = [dict(lost=x) for x in ("auto", 2, 3, 4)] + [dict(lost=NO_ROUND_LOSS, lossw=x) for x in (0.08, 0.12, 0.2)]
@@ -674,11 +677,23 @@ def grids() -> Dict[str, List[Dict]]:
         "grouped": [dict(b, wait=w, interval=60, hops=h) for b in small for w in (1, 6) for h in (1, 2, 3)],
         "vote007": [dict(rtt=r, epoch=ep, m=m, tau=t, **x) for r in ("auto", 10, 20)
                     for x in (dict(lost="auto"), dict(lost=3), dict(lost=NO_ROUND_LOSS, lossw=0.12))
-                    for ep, ms in ((3, (1, 2, 3)), (6, (2, 3, 6)), (12, (3, 6, 12)), (24, (6, 12, 24)))
+                    for ep, ms in ((3, (1, 2, 3)), (6, (2, 3, 6)), (12, (3, 6, 12)), (24, (6, 12, 24)),
+                                   (36, (9, 18, 36)), (48, (12, 24, 48)))
                     for m in ms for t in (0.01, 0.1, 0.25, 0.5)],
         "netbouncer": [dict(n=n, step=max(1, n // 2), lam=l, bad=b, d_ms=d) for n in (12, 24, 60)
                        for l in (0.01, 0.1, 1.0) for b in (0.8, 0.9, 0.97, 0.99) for d in (1.0, 3.0, 5.0, 8.0)],
     }
+
+
+def grid_edges(p: Dict, grid: Sequence[Dict]) -> Dict[str, str]:
+    """选中参数里落在网格边缘的数值键：{键: "min" 或 "max"}。字符串取值（"auto"、near/deep）与只有一个取值的键不算。"""
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    out: Dict[str, str] = {}
+    for k, v in p.items():
+        vals = {g[k] for g in grid if k in g and num(g[k])}
+        if num(v) and len(vals) > 1 and v in (min(vals), max(vals)):
+            out[k] = "min" if v == min(vals) else "max"
+    return out
 
 
 # ---------------------------------------------------------------------- 评分
@@ -824,6 +839,13 @@ def pick_low_fa(rows: Sequence[Dict], limit: float = LOW_FA) -> Dict:
 
 
 # ---------------------------------------------------------------------- 驱动：测试集（引擎 + 旁路）
+def light_only(eng) -> None:
+    """关掉全部精测：走引擎对"该链路不能精测"的既有路径（研判屏蔽精测动作、恢复复核跳过、留给全网恢复），
+    引擎只用基线方法回放的轻量测量。"""
+    eng.noprobe = list(eng.enc.lids)
+    eng.policy.set_capabilities(eng.noprobe, [l for l in eng.enc.lids if not eng.backend.can_bw(l)])
+
+
 def _engine_alarm(k, a) -> Tuple:
     if a["fault_type"] == "node_down":
         return (k, "node", a["node"], "node_down")
@@ -877,13 +899,13 @@ def _test_job(job):
     if c["name"] == "standard":
         segs += drive_engine(eng, rec, dual_cases(topo, dual_n, seed), "dual", after, tail)
         segs += drive_engine(eng, rec, node_cases(topo, node_reps), "node", after, tail)
-    lg0 = rec.n
+    lg0, p0 = rec.n, eng.deep_probes
     nz = bench_noise(eng, rounds)
-    lg1 = rec.n
+    lg1, normal_probes = rec.n, eng.deep_probes - p0
     interval = eng.plan.interval_s
     eng.stop()
     shutil.rmtree(log_dir, ignore_errors=True)
-    nodeep = _no_deep_run(model, c, seed, out, after, tail, dual_n) if c["name"] == "standard" else []
+    nodeep, nz_nd = _no_deep_run(model, c, seed, out, rounds, after, tail, dual_n, node_reps)
     wall_engine = round(time.time() - t0, 1)
     ev = Evidence(enc0, rec.arrays())
     rows = []
@@ -894,13 +916,14 @@ def _test_job(job):
         f = sg["case"]["faults"][0]
         pred = next((f"{a[2]} {a[3]}" for a in al if a[0] >= sg["inj"]), "no alarm")
         rows.append(dict(method=name, suite=sg["suite"], cond=c["name"], seed=seed, link=f.link, type=f.type,
-                         value=f.value, pred=pred, probes=sg.get("probes", 0) if name == "edgefdl" else 0,
-                         recheck=sg.get("recheck_probes", 0) if name == "edgefdl" else 0, **x))
+                         value=f.value, pred=pred, probes=sg.get("probes", 0) if name.startswith("edgefdl") else 0,
+                         recheck=sg.get("recheck_probes", 0) if name.startswith("edgefdl") else 0, **x))
     for sg in segs:
         add("edgefdl", sg, sg["alarms"])
     for sg in nodeep:
         add("edgefdl_no_deep", sg, sg["alarms"])
-    fa = {"edgefdl": dict(false_alarms=nz["false_alarms"], rounds=nz["rounds"])}
+    fa = {"edgefdl": dict(false_alarms=nz["false_alarms"], rounds=nz["rounds"]),
+          "edgefdl_no_deep": dict(false_alarms=nz_nd["false_alarms"], rounds=nz_nd["rounds"])}
     t1 = time.time()
     groups: Dict = {}
     for label, m, v, p in cfg:
@@ -915,28 +938,43 @@ def _test_job(job):
             fa[label] = dict(false_alarms=len(res[v]), rounds=rounds)
     return dict(cond=c["name"], seed=seed, rows=rows, fa=fa, wall_engine=wall_engine,
                 wall_baselines=round(time.time() - t1, 1), rounds=rec.n, detector_triggers=nz["detector_triggers"],
-                filtered_by_agent=nz["filtered_by_agent"])
+                filtered_by_agent=nz["filtered_by_agent"], normal_run_deep_probes=normal_probes)
 
 
-def _no_deep_run(model, c, seed, out, after, tail, dual_n) -> List[Dict]:
-    """同种子、不用精测的 EdgeFDL：研判时不给 probe_fn，智能体在判定动作中取最优（Policy.diagnose 的既有退化路径），
-    回答"只看基线方法看到的这条轻量测量流时结果如何"。告警恢复的复核仍可精测，不影响告警是否发出与指向。"""
+def _no_deep_run(model, c, seed, out, rounds, after, tail, dual_n, node_reps) -> Tuple[List[Dict], Dict]:
+    """同种子、同条件、不用任何精测的 EdgeFDL（light_only）：用例与误报统计都跟主运行相同，回答"只看基线方法看到的
+    这条轻量测量流时结果如何"。研判和恢复复核都不精测，rows 里的 probes 恒为 0。"""
+    from .bench import bench_noise
     from .robust import _engine
     log_dir = os.path.join(out, "logs", f"{c['name']}_{seed}_nd")
     eng, topo = _engine(model, c, seed, log_dir)
     rec = Recorder(FeatureEncoder(eng.topo, Baseline(**eng.enc.base.to_dict())))
     rec.tap(eng.backend)
-    orig = eng.policy.diagnose
-    eng.policy.diagnose = lambda window, probe_fn=None, **kw: orig(window, None, **kw)
+    light_only(eng)
     segs = drive_engine(eng, rec, single_cases(topo), "single", after, tail)
-    segs += drive_engine(eng, rec, dual_cases(topo, dual_n, seed), "dual", after, tail)
+    if c["name"] == "standard":
+        segs += drive_engine(eng, rec, dual_cases(topo, dual_n, seed), "dual", after, tail)
+        segs += drive_engine(eng, rec, node_cases(topo, node_reps), "node", after, tail)
+    nz = bench_noise(eng, rounds)
+    assert eng.deep_probes == 0, "不用精测的对照行发生了精测"
     eng.stop()
     shutil.rmtree(log_dir, ignore_errors=True)
-    return segs
+    return segs, nz
 
 
-def configs(best: Dict, low: Optional[Dict] = None) -> List[Tuple]:
-    """(标签, 方法, 变体, 参数)。逐目标规则不指名链路，没有 +ems 变体。tuned = 验证集 F1 最优，lowfa = 低误报工作点。"""
+def lam_points(best: Dict, trace: Dict) -> Dict[str, Dict]:
+    """NetBouncer + EMS 选中点只改 λ 的其余网格点 {标签: 网格行}：验证 F1 几乎相同的设置，测试集上也要报告。"""
+    b = best.get("netbouncer", {}).get("+ems")
+    if b is None:
+        return {}
+    same = lambda p: all(p[k] == v for k, v in b["params"].items() if k != "lam")
+    return {f"netbouncer+ems:lam{r['params']['lam']}": r for r in trace["netbouncer+ems"]
+            if same(r["params"]) and r["params"]["lam"] != b["params"]["lam"]}
+
+
+def configs(best: Dict, low: Optional[Dict] = None, extra: Optional[Dict] = None) -> List[Tuple]:
+    """(标签, 方法, 变体, 参数)。逐目标规则不指名链路，没有 +ems 变体。tuned = 验证集 F1 最优，lowfa = 低误报工作点，
+    extra = lam_points() 的结果。"""
     cfg = []
     for m, d in DEFAULTS.items():
         for v in ("", "+ems") if m != "threshold" else ("",):
@@ -945,6 +983,8 @@ def configs(best: Dict, low: Optional[Dict] = None) -> List[Tuple]:
                 cfg.append((f"{m}{v}:tuned", m, v, best[m][v]["params"]))
             if low and f"{m}{v}" in low:
                 cfg.append((f"{m}{v}:lowfa", m, v, low[f"{m}{v}"]["params"]))
+    for label, r in (extra or {}).items():
+        cfg.append((label, "netbouncer", "+ems", r["params"]))
     return cfg
 
 
@@ -1007,7 +1047,33 @@ def summarize(results: List[Dict]) -> Dict:
     for m, cs in out["false_alarms"].items():
         for c, d in cs.items():
             d["per_day"] = round(sum(d["counts"]) / d["days"], 3)
+    out["overall"] = {}
+    for m in methods:
+        rs = [r for r in rows if r["method"] == m and r["suite"] == "single"]
+        ts = [r["t"] for r in rs if r["t"] is not None]
+        cs = out["false_alarms"].get(m, {})
+        out["overall"][m] = dict(faults=len(rs), correct=int(sum(r["first_joint"] for r in rs)),
+                                 link_type_pct=pct(r["first_joint"] for r in rs),
+                                 time_to_alarm_mean_s=round(float(np.mean(ts)), 1) if ts else None,
+                                 false_alarms=int(sum(sum(d["counts"]) for d in cs.values())),
+                                 simulated_days=round(sum(d["days"] for d in cs.values()), 3))
     return out
+
+
+def paired_gap(rows: Sequence[Dict], a: str, b: str, n: int = 20000) -> Dict:
+    """a 减 b 的单故障 link+type 正确率（百分点）：同种子同条件逐例配对，按固定场景整组重采样（场景才是独立单元）得 95% 区间。"""
+    key = lambda r: (r["cond"], r["seed"], r["link"], r["type"])
+    x = {key(r): bool(r["first_joint"]) for r in rows if r["method"] == a and r["suite"] == "single"}
+    y = {key(r): bool(r["first_joint"]) for r in rows if r["method"] == b and r["suite"] == "single"}
+    assert set(x) == set(y) and x, (a, b)
+    scen = sorted({k[2:] for k in x})
+    d = np.zeros(len(scen))
+    for i, s in enumerate(scen):
+        d[i] = sum(int(x[k]) - int(y[k]) for k in x if k[2:] == s)
+    boot = d[np.random.default_rng(0).integers(len(d), size=(n, len(d)))].sum(1) * 100 / len(x)
+    return dict(a=a, b=b, faults=len(x), only_a=int(sum(x[k] and not y[k] for k in x)),
+                only_b=int(sum(y[k] and not x[k] for k in x)), gap_points=round(float(d.sum()) * 100 / len(x), 2),
+                ci95=[round(float(q), 2) for q in np.percentile(boot, [2.5, 97.5])], resampled_scenarios=len(scen))
 
 
 def run_compare(model: str, out: str, workers: int = 24, seeds: Sequence[int] = TEST_SEEDS, val_seed: int = VAL_SEED,
@@ -1045,53 +1111,105 @@ def run_compare(model: str, out: str, workers: int = 24, seeds: Sequence[int] = 
         low = {k: pick_low_fa(v) for k, v in trace.items()}
         for k, r in low.items():
             print(f"  [{k}] 低误报点 F1={r['f1']} 误报/天={r['fa_per_day']} {r['params']}", flush=True)
-        cfg = configs(best, low)
+        lams = lam_points(best, trace)
+        for k, r in lams.items():
+            print(f"  [{k}] F1={r['f1']} 误报/天={r['fa_per_day']} {r['params']}", flush=True)
+        with open(os.path.join(out, "tuning.pkl"), "wb") as f:
+            pickle.dump(dict(best=best, trace=trace, low=low, lams=lams), f, protocol=4)
+        cfg = configs(best, low, lams)
         tj = [(model, c, s * 100 + i, cfg, rounds, after, tail, dual_n, node_reps, out)
               for i, c in enumerate(cl_test) for s in seeds]
         print(f"测试 {len(tj)} 个作业，{len(cfg)} 种基线配置", flush=True)
         results = []
         for k, r in enumerate(pool.imap_unordered(_test_job, tj, chunksize=1)):
             results.append(r)
+            with open(os.path.join(out, "results.pkl"), "wb") as f:      # 汇总出错时不必重跑
+                pickle.dump(results, f, protocol=4)
             print(f"  [{k + 1}/{len(tj)}] {r['cond']} seed={r['seed']} 引擎 {r['wall_engine']}s 基线 {r['wall_baselines']}s "
                   f"累计 {time.time() - t0:.0f}s", flush=True)
+    with open(os.path.join(out, "run.pkl"), "wb") as f:
+        pickle.dump(dict(cl_test=cl_test, grid=grid, meta=meta, topo=topo.name, plan_window=plan.window), f, protocol=4)
+    res = finish(model, out, results, grid, best, trace, low, lams, cl_test, meta, topo.name, interval, plan.window, dict(
+        seeds=seeds, val_seed=val_seed, rounds=rounds, val_rounds=val_rounds, after=after, tail=tail, dual_n=dual_n,
+        node_reps=node_reps, val_dual=val_dual, val_node=val_node), t0)
+    for p in val_paths:
+        os.remove(p)
+    print(markdown(res), flush=True)
+    return res
+
+
+def finish(model, out, results, grid, best, trace, low, lams, cl_test, meta, topo_name, interval, window, a, t0) -> Dict:
+    """汇总并写文件。单独成函数：tuning.pkl、results.pkl 还在时可以不重跑仿真，直接重算。"""
+    seeds, val_seed, rounds, val_rounds = a["seeds"], a["val_seed"], a["rounds"], a["val_rounds"]
+    after, tail, dual_n, node_reps, val_dual, val_node = (a["after"], a["tail"], a["dual_n"], a["node_reps"], a["val_dual"],
+                                                          a["val_node"])
     names = [c["name"] for c in cl_test]
     results.sort(key=lambda x: (names.index(x["cond"]), x["seed"]))
-    res = dict(config=dict(model=model, model_version=meta.get("version"), topology=topo.name, backend="sim",
+    res = dict(config=dict(model=model, model_version=meta.get("version"), topology=topo_name, backend="sim",
                            test_seeds=[int(s) for s in seeds], val_seed=val_seed, job_seed="seed*100+condition index",
                            conditions=[dict(name=c["name"], bk=c.get("bk", {}), sigma=c.get("sigma"),
                                             relearn=bool(c.get("relearn"))) for c in cl_test],
                            rounds_per_normal_run=rounds, val_rounds_per_normal_run=val_rounds, interval_s=interval,
-                           pre_rounds=plan.window, fault_rounds=after, tail_rounds=tail, baseline_hold_rounds=HOLD,
+                           pre_rounds=window, fault_rounds=after, tail_rounds=tail, baseline_hold_rounds=HOLD,
                            dual_trials_per_seed=dual_n, node_reps_per_seed=node_reps,
                            val_dual_trials=val_dual, val_node_reps=val_node,
                            rule_thresholds=dict(cp_k=CP_K, bw_drop=BW_DROP, bw_k=BW_K),
                            type_rule=dict(jitter_ratio=JITTER_RATIO, rtt_floor_ms=RTT_FLOOR_MS),
                            defaults=DEFAULTS, grid_sizes={m: len(v) for m, v in grid.items()}, env=_env()),
                tuning={f"{m}{v}": dict(params=r["params"], val_f1=r["f1"], val_tp=r["tp"], val_fp=r["fp"], val_fn=r["fn"],
-                                       val_fa_per_day=r["fa_per_day"],
+                                       val_fa_per_day=r["fa_per_day"], grid_edges=grid_edges(r["params"], grid[m]),
                                        top5=sorted(trace[f"{m}{v}"], key=lambda x: -x["f1"])[:5])
                        for m, vs in best.items() for v, r in vs.items()},
-               tuning_low_fa={k: dict(params=r["params"], val_f1=r["f1"], val_fa_per_day=r["fa_per_day"])
-                              for k, r in low.items()})
+               tuning_low_fa={k: dict(params=r["params"], val_f1=r["f1"], val_fa_per_day=r["fa_per_day"],
+                                      grid_edges=grid_edges(r["params"], grid[k.replace("+ems", "")]))
+                              for k, r in low.items()},
+               sensitivity={k: dict(params=r["params"], val_f1=r["f1"], val_tp=r["tp"], val_fp=r["fp"], val_fn=r["fn"],
+                                    val_fa_per_day=r["fa_per_day"]) for k, r in lams.items()})
     res.update(summarize(results))
     edge = [r for x in results for r in x["rows"] if r["method"] == "edgefdl"]
     assert edge, "没有 EdgeFDL 结果"
     res["consistency"] = consistency(model, edge)
     es = [r for r in edge if r["suite"] == "single" and r["cond"] == "standard"]
+    es1 = [r for r in edge if r["suite"] == "single"]
     res["edgefdl_deep_probes_per_fault"] = dict(
         condition="standard, 84 single-fault scenarios", all=round(float(np.mean([r["probes"] for r in es])), 3),
-        alarm_clearing_rechecks=round(float(np.mean([r["recheck"] for r in es])), 3))
+        alarm_clearing_rechecks=round(float(np.mean([r["recheck"] for r in es])), 3),
+        by_condition={c: probe_stats([r for r in es1 if r["cond"] == c]) for c in names},
+        all_conditions=probe_stats(es1),
+        normal_run_per_day={c: round(sum(x["normal_run_deep_probes"] for x in results if x["cond"] == c)
+                                     / max(1e-9, sum(1 for x in results if x["cond"] == c) * rounds * interval / 86400), 2)
+                            for c in names},
+        no_deep_row_probes=int(sum(r["probes"] for x in results for r in x["rows"] if r["method"] == "edgefdl_no_deep")))
+    rows = [r for x in results for r in x["rows"]]
+    res["paired"] = [paired_gap(rows, a_, b_) for a_, b_ in itertools.product(
+        ("edgefdl", "edgefdl_no_deep"), ["netbouncer+ems:tuned"] + list(lams) + ["vote007+ems:tuned", "grouped+ems:tuned"])
+        if any(r["method"] == b_ for r in rows)]
+    res["window_tradeoff"] = window_tradeoff(trace)
     res["streams"] = [{k: x[k] for k in ("cond", "seed", "rounds", "wall_engine", "wall_baselines", "detector_triggers",
-                                         "filtered_by_agent")} for x in results]
+                                         "filtered_by_agent", "normal_run_deep_probes")} for x in results]
     res["wall_s"] = round(time.time() - t0, 1)
     with open(os.path.join(out, "compare.json"), "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=1, default=str)
     with open(os.path.join(out, "rows.json"), "w", encoding="utf-8") as f:
-        json.dump([r for x in results for r in x["rows"]], f, ensure_ascii=False)
-    for p in val_paths:
-        os.remove(p)
-    print(markdown(res), flush=True)
+        json.dump(rows, f, ensure_ascii=False)
     return res
+
+
+def window_tradeoff(trace: Dict) -> Dict:
+    """回归与投票 + EMS 规则每种窗口长度的验证集最优点：更短的窗口能否换来更快的告警，只看验证集。"""
+    out: Dict = {}
+    for name, key in (("netbouncer+ems", "n"), ("vote007+ems", "epoch")):
+        for r in sorted(trace.get(name, []), key=lambda x: (x["f1"], str(x["params"]))):
+            out.setdefault(name, {})[str(r["params"][key])] = dict(val_f1=r["f1"], val_fa_per_day=r["fa_per_day"], params=r["params"])
+    return out
+
+
+def probe_stats(rs: Sequence[Dict]) -> Dict:
+    """每故障精测次数（含恢复复核）与用过精测的故障占比。"""
+    return dict(per_fault=round(float(np.mean([r["probes"] for r in rs])), 3),
+                rechecks_per_fault=round(float(np.mean([r["recheck"] for r in rs])), 3),
+                faults_with_probe_pct=pct(r["probes"] > 0 for r in rs),
+                faults_with_diagnosis_probe_pct=pct(r["probes"] > r["recheck"] for r in rs))
 
 
 def _env() -> Dict:
