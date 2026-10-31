@@ -30,7 +30,7 @@ production fault data: faults are injected into an equivalent virtual network bu
 
 | Question | Answer | Evidence |
 |---|---|---|
-| Is it better than what exists? | On the same measurements as re-implementations of the methods behind existing tools (threshold alerting, alarm grouping, boolean tomography, NetBouncer-style regression, 007-style voting, default and tuned, also with added control-plane rules): link and type correct in **98.6%** of 2,520 faults over six conditions against 96.3% for the best baseline; both of two simultaneous faults reported with their types in **97.3%** against 92.0%, with no wrong alarm. Per-target thresholds name no link and raise up to 36 alarms per fault | [Comparison](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
+| Is it better than what exists? | In simulation only (12-device demo topology, 84 fixed fault scenarios × 5 seeds × 6 conditions, 2,520 runs): EdgeFDL names link and type in **98.6%**, first alarm after **38.9 s**, 53 false alarms in 30 simulated days, 48 of them under 15 s transients. NetBouncer-style regression with added LSDB and bandwidth rules, setting selected on separate validation seeds: 97.7%, 152.6 s, no false alarm; with λ = 0.01, which validation cannot separate from that setting: 99.2%, 154.5 s, 21 false alarms. Accuracy is close and depends on the baseline's settings; EdgeFDL's clear gains are time to alarm and concurrent faults: both of two simultaneous faults with types in **97.3%** against 93.3%, no wrong alarm (standard conditions, 300 cases). Baselines replay EdgeFDL's light measurements; EdgeFDL also uses deep probes (2.88 per fault over the six conditions, 1.05 under standard conditions), and without them gets 97.3%, 39.7 s, 197 false alarms. Per-target thresholds name no link and raise up to 36 alarms per fault | [Comparison](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
 | Does it work outside a simulator? | On a real protocol stack (network namespaces, FRR OSPF, `tc`, wall-clock 5 s rounds) with the model trained on the simulator only: **84/84** single-fault scenarios alarmed with the right type and link, mean 37.9 s, all cleared after repair; device down 6/6; two faults: first alarm right 16/16, both reported 15/16; 0 false alarms in 2.67 network hours | [Results](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) |
 | Can it watch a real network? | `serve --backend live` measures a routed network from the EMS and never writes device configuration; with `--endpoints`, short-lived probe processes run on the machines you list. Black-box on a real protocol stack, with faults applied from outside the serving process and routers at the Linux default ICMP rate limit: **34/34** with LSDB access and link-end probes (device down not run in this mode), 30/36 with LSDB access, 28/36 from ping and traceroute alone. Not yet run on physical devices | [Connecting to a real network](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
 | Can I try it now? | Replay in the browser, `docker compose up`, or three commands from source; no hardware, no keys | [Quick start](#quick-start) |
@@ -102,7 +102,7 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 
 | What | Command | Notes |
 |---|---|---|
-| Comparison with the methods behind existing tools | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | about 15 min with 24 workers |
+| Comparison with the methods behind existing tools | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | about 18 min with 24 workers |
 | Full pipeline: baseline → 60,000 samples → training → evaluation → self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | about 15 min on CPU |
 | Accuracy on the test set | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz` | `test.npz` is written by the pipeline |
 | Self-test | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 rounds × 5 s = 72 h of simulated time |
@@ -112,7 +112,7 @@ vendor commands and reports that the rehearsed OSPF takeover to the backup path 
 | `live` backend, black box | `scripts/lab.sh build-torch`, then `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | Docker with privileged containers; about 30 min per 17 scenarios |
 | Container image end to end | `tools/dev/ci.sh image` | Docker with the compose plugin; builds, injects a fault through the REST API, checks alarm and recovery, removes everything |
 | Dashboard replay | `python tools/demo/record.py` | one real-time run, about 14 min |
-| Unit tests | `python -m unittest discover -s tests` | 177 tests |
+| Unit tests | `python -m unittest discover -s tests` | 220 tests |
 
 The pipeline trains a new model in `runs/v6/`, which is not identical to the released one; the figures on this page
 were measured with `results/model.pt`, and evaluating that bundle reproduces the test-set figures exactly. The lab
@@ -138,19 +138,23 @@ Details: [architecture](docs/architecture.md) · [algorithms](docs/algorithms.md
 
 ## Compared with existing open-source tools
 
-**Measured on the same measurements.** `python -m edgefdl compare` replays the stream the engine sees through
-re-implementations of threshold alerting, alarm grouping, boolean tomography, greedy set cover, NetBouncer-style
-regression and 007-style voting, each with the routing matrix, pings to both interfaces of every link, and default and
-tuned parameters. These are the published methods, not the products. On the 84 single-fault scenarios (5 seeds,
-simulation backend) EdgeFDL names link and type in 100.0% with one alarm per fault, no false alarm and 38.5 s to alarm.
-With added LSDB and bandwidth rules the best baselines reach 98.3% at 52.2 false alarms per day, or 97.1% in 57.6 s and
-96.4% in 150.4 s with none.
+**Measured on the same light measurements, in simulation.** `python -m edgefdl compare` replays the light measurements
+the engine sees through re-implementations of threshold alerting, alarm grouping, boolean tomography, greedy set cover,
+NetBouncer-style regression and 007-style voting, each with the routing matrix, pings to both interfaces of every link,
+and default and tuned parameters. These are the published methods, not the products. EdgeFDL may also use deep probes,
+which the baselines do not replay. On the 84 single-fault scenarios under standard conditions (5 seeds) EdgeFDL names
+link and type in 100.0% with one alarm per fault, no false alarm and 38.5 s to alarm, and also 100.0% without deep
+probes. With added LSDB and bandwidth rules and settings selected by validation F1, baselines reach 99.5% in 154.1 s,
+96.9% in 88.6 s and 95.7% in 73.8 s, with no false alarm on these streams; regression with λ = 0.01, which validation
+cannot separate, also reaches 100.0%, in 154.6 s. At default settings grouping reaches 98.3% in 34.5 s at 52.2 false
+alarms per day.
 
 ![Three panels with one row per method. Left: link and type correct by fault type under standard conditions. Middle: link and type correct under six test conditions. Right: false alarms per simulated day under the same conditions](docs/images/compare.png)
 
-EdgeFDL is behind under ICMP rate limiting (95.2% against 96.7%), on false alarms when every transient lasts 15 s (9.6
-per day against 0.0), and on time to alarm for link down and route drift, where a short LSDB rule takes 10 s against
-30 s. Full tables, parameters and what this does not cover: [docs/comparison.md](docs/comparison.md#measured-comparison).
+EdgeFDL is behind under ICMP rate limiting (95.2% and 96.9% against 97.6%), on false alarms when every transient lasts
+15 s (9.6 per day against 0.0), and on time to alarm for link down, route drift and bandwidth, where a short rule on the
+LSDB or the bandwidth estimate takes 10 s, 10 s and 40 s against 30 s, 30 s and 57 s. Full tables, parameters and what
+this does not cover: [docs/comparison.md](docs/comparison.md#measured-comparison).
 
 **Capabilities**, from public documentation. The tools are mature and much broader in scope; EdgeFDL complements them
 and sends its alarms to them via Syslog, Webhook or Prometheus.

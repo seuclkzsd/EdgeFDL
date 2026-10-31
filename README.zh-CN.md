@@ -26,7 +26,7 @@
 
 | 问题 | 结果 | 证据 |
 |---|---|---|
-| 比现有方案好在哪 | 在同一份测量数据上，与现有工具背后的方法对比（阈值告警、告警分组、布尔层析、NetBouncer 式回归、007 式投票，各含默认与调优参数，并加上控制面规则）：六种条件共 2,520 个故障，链路和类型全部判对 **98.6%**，最好的基线 96.3%；两条故障同时发生时，两条连同类型都报对 **97.3%**，最好的基线 92.0%，且没有误判告警。逐目标阈值不指出链路，每个故障最多 36 条告警 | [对比](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
+| 比现有方案好在哪 | 仅为仿真结果（12 台设备的演示拓扑，84 个固定故障场景 × 5 个种子 × 6 种条件，共 2,520 次）：EdgeFDL 链路和类型全部判对 **98.6%**，平均 **38.9 s** 发出首条告警，30 个模拟日共 53 条误报，其中 48 条出现在 15 s 瞬时干扰条件下。NetBouncer 式回归加上新增的 LSDB 和带宽规则，参数在独立验证种子上选定：97.7%，152.6 s，无误报；取验证集分不开的 λ = 0.01：99.2%，154.5 s，21 条误报。两者准确率接近，且基线结果随参数变化；EdgeFDL 的明确优势是告警速度和并发故障：两条故障同时发生时两条连同类型都报对 **97.3%**，基线 93.3%，无错误告警（标准条件，300 例）。基线回放 EdgeFDL 的轻量测量，EdgeFDL 另外使用精测（六种条件平均每个故障 2.88 次，标准条件 1.05 次），不用精测时为 97.3%，39.7 s，197 条误报。逐目标阈值不指出链路，每个故障最多 36 条告警 | [对比](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
 | 离开仿真还准吗 | 真实协议栈（网络命名空间、FRR OSPF、`tc`，真实时间 5 s 一轮），模型只在仿真上训练：84 个单故障场景 **84/84** 类型和链路全部正确，平均 37.9 s 告警，修复后全部清除；设备宕机 6/6；两条故障并发，首条告警 16/16 正确，两条都报出 15/16；2.67 网络小时 0 误报 | [结果](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) |
 | 能接真实网络吗 | `serve --backend live` 在 EMS 上测量路由网络，绝不写设备配置；使用 `--endpoints` 时，会在你列出的机器上启动短时探测进程。在真实协议栈上做黑盒验证，故障从服务进程之外施加，路由器保持 Linux 默认 ICMP 限速：有 LSDB 和链路端点探针时 **34/34**（此模式未跑设备宕机），只有 LSDB 时 30/36，只用 ping 和 traceroute 时 28/36。尚未在物理设备上运行 | [接入真实网络](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
 | 现在能试吗 | 浏览器里看回放、`docker compose up`，或从源码三条命令运行；不需要硬件和密钥 | [快速开始](#快速开始) |
@@ -90,7 +90,7 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 
 | 内容 | 命令 | 说明 |
 |---|---|---|
-| 与现有工具背后方法的对比 | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | 24 个工作进程约 15 分钟 |
+| 与现有工具背后方法的对比 | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | 24 个工作进程约 18 分钟 |
 | 完整流水线：基线 → 60,000 个样本 → 训练 → 评估 → 自测 | `python -m edgefdl pipeline --out runs/v6 --workers 16` | CPU 约 15 分钟 |
 | 测试集准确率 | `python -m edgefdl eval --model results/model.pt --data runs/v6/test.npz` | `test.npz` 由流水线生成 |
 | 指标自测 | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 轮 × 5 s = 72 小时仿真时间 |
@@ -100,7 +100,7 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 | `live` 后端黑盒验证 | `scripts/lab.sh build-torch`，然后 `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | 需要 Docker 特权容器；每 17 个场景约 30 分钟 |
 | 容器镜像端到端 | `tools/dev/ci.sh image` | 需要 Docker 与 compose 插件；构建镜像，通过 REST API 注入故障，检查告警与恢复，然后清理 |
 | 大屏回放 | `python tools/demo/record.py` | 一次实时运行，约 14 分钟 |
-| 单元测试 | `python -m unittest discover -s tests` | 177 个测试 |
+| 单元测试 | `python -m unittest discover -s tests` | 220 个测试 |
 
 流水线会在 `runs/v6/` 训练一个新模型，它与发布的模型并不相同；本页的数据都是用 `results/model.pt` 测得的，评估这个模型包可原样复现测试集结果。实验容器镜像基于 Debian 12，安装
 FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用本地 Debian 镜像源。
@@ -122,15 +122,16 @@ FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用�
 
 ## 与现有开源工具对比
 
-**同一份测量数据上的实测。**`python -m edgefdl compare` 把引擎看到的测量流回放给重新实现的方法：阈值告警、告警分组、布尔层析、
+**同一份轻量测量上的仿真实测。**`python -m edgefdl compare` 把引擎看到的轻量测量回放给重新实现的方法：阈值告警、告警分组、布尔层析、
 贪心集合覆盖、NetBouncer 式回归和 007 式投票，每种都拿到路由矩阵和每条链路两端接口的 ping，并报告默认和调优两档参数。这些是公开发表的方法，
-不是产品本身。在 84 个单故障场景上（5 个种子，仿真后端），EdgeFDL 链路和类型全部判对，每个故障一条告警，没有误报，平均 38.5 s 告警。
-加上 LSDB 和带宽规则后，最好的基线为 98.3%（每天 52.2 条误报），或没有误报时 97.1%（57.6 s）和 96.4%（150.4 s）。
+不是产品本身。EdgeFDL 还可以使用精测，基线不回放精测。在标准条件的 84 个单故障场景上（5 个种子），EdgeFDL 链路和类型全部判对，每个故障一条告警，
+没有误报，平均 38.5 s 告警，不用精测时也是 100.0%。加上 LSDB 和带宽规则、按验证集 F1 选定参数后，基线为 99.5%（154.1 s）、96.9%（88.6 s）和
+95.7%（73.8 s），在这些测量流上没有误报；验证集分不开的 λ = 0.01 回归也达到 100.0%（154.6 s）。默认参数下告警分组为 98.3%（34.5 s），每天 52.2 条误报。
 
 ![三列，每行一种方法。左：标准条件下各故障类型的链路和类型准确率。中：六种测试条件下的准确率。右：同样条件下每模拟日的误报数](docs/images/compare.png)
 
-EdgeFDL 不占优的地方：ICMP 限速时（95.2%，基线 96.7%）；每次瞬态都持续 15 s 时的误报（每天 9.6 条，基线 0.0）；链路中断和路由漂移的告警时间
-（LSDB 短规则 10 s，EdgeFDL 30 s）。完整表格、参数和本实验不覆盖的内容见 [docs/comparison.md](docs/comparison.md#measured-comparison)。
+EdgeFDL 不占优的地方：ICMP 限速时（95.2% 和 96.9%，基线 97.6%）；每次瞬态都持续 15 s 时的误报（每天 9.6 条，基线 0.0）；链路中断、路由漂移和带宽的告警时间
+（读 LSDB 或带宽估计的短规则分别为 10 s、10 s、40 s，EdgeFDL 为 30 s、30 s、57 s）。完整表格、参数和本实验不覆盖的内容见 [docs/comparison.md](docs/comparison.md#measured-comparison)。
 
 **能力对比**依据各项目的公开文档。这些工具成熟且覆盖面广得多；EdgeFDL 是对它们的补充，告警通过 Syslog、Webhook 或 Prometheus 送入这些平台。
 

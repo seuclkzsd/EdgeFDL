@@ -16,8 +16,11 @@ with the same outcomes (latency, CPU, memory and run time vary with the machine'
 ### Added
 
 - `live` backend: `serve --backend live` measures a real routed network read-only from the EMS, with ping and a rotating
-  traceroute budget (`--trace-per-round`) that respects router ICMP rate limits. Nothing is created or changed, injection
-  is refused by the backend and the API, and the dashboard hides the panel.
+  traceroute budget (`--trace-per-round`) that respects router ICMP rate limits. It never writes device configuration,
+  injection is refused by the backend and the API, and the dashboard hides the panel; with `--endpoints`, short-lived
+  probe processes run on the machines you list. A ping that could not run counts as missing, not as "no answer". The
+  `iperf3` server stops after 10 s at the latest, the client waits for it to listen, and the rate is capped at 30% of the
+  lower of the nominal bandwidth and the packet-train estimate. A model bundle cannot raise the probe load.
 - `preflight` command: address answers, traceroute privileges, path comparison, LSDB command, probe endpoints.
 - Optional inputs `--lsdb-cmd` (FRR `show ip ospf database router json`) and `--endpoints` (YAML); `--infer-state` derives
   link and cost state from ping and traceroute; `--skip-silent`; `serve --baseline`; `baseline --backend live`.
@@ -47,6 +50,10 @@ with the same outcomes (latency, CPU, memory and run time vary with the machine'
 
 ### Changed
 
+- CLI: common mistakes give one line instead of a traceback; `serve` takes its port before anything is measured or
+  written; output directories are created before the work starts; `--kinds` and `--conditions` list the valid names;
+  `--skip-silent` stops when nothing answers.
+- API: `route_drift` on a link to a host or the EMS answers 400.
 - NOTICE lists the transitive packages and the container image, and records traceroute as GPL-2.0-or-later.
 - `learn_baseline` paces itself at the measurement interval on the `live` backend.
 - Three unused imports removed; no change in behaviour.

@@ -42,7 +42,7 @@ the pages translate the labels you will see.
 | Page | Content |
 |---|---|
 | [Results](results.md) | Accuracy on the independent test set, the self-test (latency, overhead, 72-hour-equivalent run, 84 online scenarios), the robustness suite, multi-fault and device-down trials, fault-size sensitivity, the real-stack smoke test and the simulator vs real-stack RTT comparison; each figure with its test conditions and source file |
-| [Comparison](comparison.md) | Measured head-to-head with re-implementations of the published methods on the same measurements, and a capability-level comparison with general monitoring (Zabbix, Prometheus, Nightingale), network management and alarm correlation (LibreNMS, OpenNMS ALEC), active measurement (perfSONAR, SmokePing), configuration analysis (Batfish) and research approaches |
+| [Comparison](comparison.md) | Measured head-to-head with re-implementations of the published methods on the same light measurements, in simulation, and a capability-level comparison with general monitoring (Zabbix, Prometheus, Nightingale), network management and alarm correlation (LibreNMS, OpenNMS ALEC), active measurement (perfSONAR, SmokePing), configuration analysis (Batfish) and research approaches |
 | [`results/README.md`](../results/README.md) | What each file in `results/` contains and which command produced it |
 
 The demo video (Chinese narration, 6 min 41 s) is attached to the
