@@ -27,7 +27,8 @@ for ((i = 0; i < shards; i++)); do
   phase=$(python3 -c "print(round($i * 5 / $shards + ${EDGEFDL_PHASE:-0}, 2))")
   EDGEFDL_LAB_NAME=$name EDGEFDL_LAB_CPUSET=${cpusets[$i]:-} \
     scripts/lab.sh run python3 scripts/realstack_eval.py run --shard "$i" --shards "$shards" \
-      --out "$out/shard$i" --phase "$phase" --commit "$commit" "$@" > "$out/shard$i.log" 2>&1 &
+      --out "$out/shard$i" --phase "$phase" --commit "$commit" --image "${EDGEFDL_LAB_IMAGE:-edgefdl-lab:latest}" "$@" \
+      > "$out/shard$i.log" 2>&1 &
   pids+=($!)
 done
 rc=0

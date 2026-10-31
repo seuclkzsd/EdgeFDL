@@ -17,6 +17,7 @@ run 的产物：<out>/result.json（每完成一个场景就覆盖写入，中�
 from __future__ import annotations
 
 import argparse
+import csv
 import glob
 import gzip
 import hashlib
@@ -443,8 +444,12 @@ def summarize_normal(runs: List[Dict], interval_s: float) -> Dict:
 
 
 def merge(parts: List[Dict]) -> Dict:
-    rows = [dict(r, shard=p["shard"], run=p.get("run")) for p in parts for r in p["rows"]]
-    rows.sort(key=lambda r: (int(r["link"][1:]), FAULT_TYPES.index(r["type"])))
+    """主结果取现场学习基线的容器；沿用模型包基线（--learn-rounds 0）的容器作为对照，单独统计。"""
+    alt = [p for p in parts if p["conditions"]["baseline"] == "bundle"]
+    parts = [p for p in parts if p["conditions"]["baseline"] != "bundle"]
+    key = lambda r: (int(r["link"][1:]), FAULT_TYPES.index(r["type"]))
+    rows = sorted((dict(r, shard=p["shard"], run=p.get("run")) for p in parts for r in p["rows"]), key=key)
+    alt_rows = sorted((dict(r, shard=p["shard"], run=p.get("run")) for p in alt for r in p["rows"]), key=key)
     node = [dict(r, shard=p["shard"], run=p.get("run")) for p in parts for r in p["node"]]
     dual = [dict(r, shard=p["shard"], run=p.get("run")) for p in parts for r in p["dual"]]
     normal = [dict(r, shard=p["shard"], run=p.get("run")) for p in parts for r in p["normal"]]
@@ -463,7 +468,7 @@ def merge(parts: List[Dict]) -> Dict:
                  infer_p99_ms_max=max([(s.get("infer") or {}).get("p99_ms", 0) or 0 for s in st]),
                  pre_fault_alarms=pre, pre_fault_rounds=pre_rounds,
                  loadavg_start_max=max(p["conditions"]["loadavg_start"][0] for p in parts))
-    return dict(
+    res = dict(
         description="Online accuracy on the real protocol stack: the online engine of `edgefdl serve` with the released "
                     "model on the netns backend (Linux namespaces, FRR OSPF, tc netem and tbf), wall-clock 5 s rounds.",
         created=time.strftime("%Y-%m-%d %H:%M:%S %z"),
@@ -479,10 +484,73 @@ def merge(parts: List[Dict]) -> Dict:
                             started=p["conditions"].get("started"),
                             loadavg_start=p["conditions"].get("loadavg_start"),
                             loadavg_end=p["conditions"].get("loadavg_end")) for p in parts])
+    if alt_rows:
+        res["summary"]["single_bundle_baseline"] = summarize(alt_rows)
+        res["scenarios_bundle_baseline"] = alt_rows
+    return res
+
+
+def shard_check(parts: List[Dict], logs: List[str]) -> Dict:
+    """分片之间有没有互相干扰：各容器无干扰时段的逐目标 RTT 中位数应一致，也不应出现丢包或 traceroute 丢跳。"""
+    med: Dict[str, List[float]] = {}
+    lost = sent = unknown = paths = 0
+    for p, d in zip(parts, logs):
+        runs = [r for r in p["normal"] if r and not r["noise_prob"]]
+        f = os.path.join(d, "measure_log.csv")
+        if not runs or not os.path.exists(f):
+            continue
+        with open(f, encoding="utf-8", newline="") as fh:
+            rows = [r for r in csv.DictReader(fh) if r["kind"] == "ping"]
+        last = max(int(r["round_id"]) for r in rows)
+        rtt: Dict[str, List[float]] = {}
+        for r in rows:
+            if int(r["round_id"]) > last - runs[0]["rounds"]:
+                sent += int(r["sent"])
+                lost += int(r["sent"]) - int(r["recv"])
+                if r["rtt_avg_ms"]:
+                    rtt.setdefault(r["target_id"], []).append(float(r["rtt_avg_ms"]))
+                if not r["target_id"].startswith("nqa."):
+                    paths += 1
+                    unknown += not r["path"]
+        for t, xs in rtt.items():
+            med.setdefault(t, []).append(statistics.median(xs))
+    spread = sorted(max(v) - min(v) for v in med.values() if len(v) > 1)
+    return dict(containers=max([len(v) for v in med.values()], default=0), targets=len(spread),
+                rtt_spread_ms_max=round(spread[-1], 3) if spread else None,
+                rtt_spread_ms_median=round(statistics.median(spread), 3) if spread else None,
+                pings_sent=sent, pings_lost=lost, path_unknown=unknown, paths_measured=paths)
+
+
+def scenario_lines(path: str, last_round: int) -> bytes:
+    """测量日志中第 last_round 轮及以前的行（round_id 是第 4 列，前几列不含逗号）。"""
+    with open(path, "rb") as f:
+        lines = f.readlines()
+    return b"".join(lines[:1] + [l for l in lines[1:] if int(l.split(b",", 4)[3]) <= last_round])
+
+
+def publish_raw(parts: List[Dict], raw: List[tuple], out: str) -> int:
+    """发布原始日志：单故障分片的测量日志（只保留场景部分，无故障时段的行数多而信息少）与全部分片的告警日志。
+    gzip 文件头 mtime 置 0，内容不变则字节不变。返回总字节数。"""
+    os.makedirs(out, exist_ok=True)
+    total = 0
+    for p, (run, logs) in zip(parts, raw):
+        tag = run.replace(os.sep, "_")
+        data = {}
+        if p["rows"]:
+            data["measure"] = scenario_lines(os.path.join(logs, "measure_log.csv"),
+                                             max(r["round_clear"] + (r["rounds_to_clear"] or 0) for r in p["rows"]))
+        with open(os.path.join(logs, "alarm_log.csv"), "rb") as f:
+            data["alarm"] = f.read()
+        for kind, text in data.items():
+            dst = os.path.join(out, f"{tag}_{kind}.csv.gz")
+            with open(dst, "wb") as g, gzip.GzipFile(filename="", fileobj=g, mode="wb", compresslevel=9, mtime=0) as z:
+                z.write(text)
+            total += os.path.getsize(dst)
+    return total
 
 
 def cmd_merge(a) -> None:
-    parts, raw, total = [], [], 0
+    parts, raw = [], []
     for d in a.dirs:
         for p in sorted(glob.glob(os.path.join(d, "**", "result.json"), recursive=True)):
             with open(p, encoding="utf-8") as f:
@@ -493,27 +561,25 @@ def cmd_merge(a) -> None:
     if not parts:
         raise SystemExit("没有找到 result.json")
     res = merge(parts)
+    if a.image:
+        res["conditions"]["image"] = a.image
+    keep = [i for i, p in enumerate(parts) if p["conditions"]["baseline"] != "bundle"]
+    parts, raw = [parts[i] for i in keep], [raw[i] for i in keep]
+    res["summary"]["shard_check"] = shard_check(parts, [d for _, d in raw])
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(res, f, ensure_ascii=False, indent=1, default=str)
         f.write("\n")
-    if a.raw:                            # 原始日志 gzip 后发布（文件头 mtime 置 0，内容不变则字节不变）
-        os.makedirs(a.raw, exist_ok=True)
-        for run, logs in raw:
-            for kind in ("measure", "alarm"):
-                src = os.path.join(logs, f"{kind}_log.csv")
-                if not os.path.exists(src):
-                    continue
-                dst = os.path.join(a.raw, f"{run.replace(os.sep, '_')}_{kind}.csv.gz")
-                with open(src, "rb") as f, open(dst, "wb") as g, \
-                        gzip.GzipFile(filename="", fileobj=g, mode="wb", compresslevel=9, mtime=0) as z:
-                    z.write(f.read())
-                total += os.path.getsize(dst)
+    if a.raw:
+        total = publish_raw(parts, raw, a.raw)
         print(f"原始日志 {total / 1e6:.2f} MB -> {a.raw}")
     s = res["summary"]
     print(json.dumps(dict(overall=s["single"].get("overall"), by_category=s["single"].get("by_category"),
+                          bundle=(s.get("single_bundle_baseline") or {}).get("overall"),
+                          bundle_misses=(s.get("single_bundle_baseline") or {}).get("misses"),
                           misses=s["single"].get("misses"), node=s["node"], dual=s["dual"],
-                          normal=s["normal"], engine=s["engine"]), ensure_ascii=False, indent=1))
+                          normal=s["normal"], engine=s["engine"], shard_check=s["shard_check"]),
+                     ensure_ascii=False, indent=1))
 
 
 def markdown_table(res: Dict) -> str:
@@ -565,6 +631,7 @@ def main(argv=None):
     p.add_argument("dirs", nargs="+")
     p.add_argument("--out", default="results/realstack.json")
     p.add_argument("--raw", help="把原始 CSV 日志 gzip 到这个目录")
+    p.add_argument("--image", default="", help="记入结果的实验镜像名")
     p.set_defaults(fn=cmd_merge)
     p = sp.add_parser("table", help="由结果 JSON 输出文档用的逐类型表")
     p.add_argument("json", nargs="?", default="results/realstack.json")

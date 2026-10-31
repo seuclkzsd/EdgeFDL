@@ -100,8 +100,11 @@ w_i = \frac{t_{i+k} - t_i}{k}, \qquad \hat C = \frac{8\,(s_r + 42)}{\operatornam
 ```
 
 where 42 B are the Ethernet, IP and UDP headers. The estimate is reliable when
-$\operatorname{median}_i w_i \le 1.3 \min_i w_i$; otherwise per-packet jitter has scrambled the dispersion and the
-light estimate is discarded ([`measure/probes.py`](../edgefdl/measure/probes.py)). On the real stack the train is
+$\operatorname{median}_i w_i \le 1.3 \min_i w_i$ and at most 10% of adjacent packets arrive in reverse order of their
+sequence numbers; otherwise per-packet jitter has scrambled the dispersion and the light estimate is discarded
+([`measure/probes.py`](../edgefdl/measure/probes.py)). The order test matters when the jitter is much larger than the
+serialization time: the arrival times are then a sample of a continuous distribution, the windows $w_i$ can agree, and
+their median reflects the width of the jitter, not the capacity. On the real stack the train is
 lengthened so that it occupies at least 0.5 ms of the bottleneck (47 packets of 1400 B on a 1 Gbit/s link) and the
 estimate is capped at 1.05 times the nominal rate. The simulator returns the effective capacity with a
 multiplicative log-normal error ($\sigma = 0.08$), capped the same way.

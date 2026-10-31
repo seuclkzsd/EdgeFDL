@@ -1,12 +1,14 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
 """真实协议栈准确率测试脚本的快速单元测试：场景枚举、分片、汇总口径（不起容器、不用 netns）。"""
+import csv
 import importlib.util
 import json
 import os
 import random
 import re
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -87,6 +89,27 @@ class TestSummary(unittest.TestCase):
         t = R.markdown_table(dict(summary=dict(single=R.summarize(rows))))
         self.assertIn("| Link down | 1 | 1 | 1 | 1 (100.0%) | 30.0 s |", t)
         self.assertIn("| **All** | 2 | 1 | 1 | 1 (50.0%) |", t)
+
+
+class TestShardCheck(unittest.TestCase):
+    def test_rtt_spread_between_shards(self):
+        """只看无干扰时段（日志最后 rounds 轮）；更早的故障轮次不计入。"""
+        with tempfile.TemporaryDirectory() as d:
+            dirs = []
+            for i, base in enumerate((3.0, 3.5)):
+                sub = os.path.join(d, str(i))
+                os.makedirs(sub)
+                dirs.append(sub)
+                with open(os.path.join(sub, "measure_log.csv"), "w", encoding="utf-8", newline="") as f:
+                    w = csv.DictWriter(f, ["round_id", "kind", "target_id", "sent", "recv", "rtt_avg_ms", "path"])
+                    w.writeheader()
+                    w.writerow(dict(round_id=0, kind="ping", target_id="lo.a", sent=5, recv=1, rtt_avg_ms=99.0, path=""))
+                    for k in (1, 2):
+                        w.writerow(dict(round_id=k, kind="ping", target_id="lo.a", sent=5, recv=5, rtt_avg_ms=base, path="a"))
+            parts = [dict(normal=[dict(rounds=2, noise_prob=0.0)]) for _ in dirs]
+            r = R.shard_check(parts, dirs)
+        self.assertEqual(r["rtt_spread_ms_max"], 0.5)
+        self.assertEqual((r["pings_sent"], r["pings_lost"], r["path_unknown"]), (20, 0, 0))
 
 
 class TestTrainOrder(unittest.TestCase):
