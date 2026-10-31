@@ -21,7 +21,8 @@ security problems privately as described in [SECURITY.md](SECURITY.md).
 | `edgefdl/core/` | Detector, orchestration engine, alarm sinks, HTTP API, dashboard | New alarm sinks, dashboard improvements; changes to the detector or the engine: **open an issue first** |
 | `edgefdl/bench.py`, `edgefdl/robust.py`, `scripts/` | Self-test, robustness harness, comparison script, real-stack smoke test | New robustness conditions, scenario coverage |
 
-Issues suitable for first-time contributors carry the label `good first issue`.
+Issues suitable for first-time contributors carry the label `good first issue`; see also
+[Your first contribution](#your-first-contribution).
 
 **Contributions that need no code are just as valuable:**
 
@@ -52,6 +53,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python -m venv .venv && source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # optional: the smaller CPU-only PyTorch
 pip install -r requirements.txt
+pip install -r requirements-dev.txt                                  # ruff, coverage.py, build
 python -m unittest discover -s tests
 ```
 
@@ -70,13 +72,52 @@ scripts/lab.sh build     # Debian 12 image with FRR, iperf3, traceroute, iproute
 scripts/lab.sh smoke     # builds the demo network, injects each fault type, 26 checks
 ```
 
+## Your first contribution
+
+Each of these is small, needs no knowledge of the agent and can be checked on a laptop without network hardware. The
+[label set](.github/labels.yml) marks more of them with `good first issue` and `help wanted`; if none is open, pick one
+from this list and say so in a new issue, so that nobody does the same work twice.
+
+1. **Add the Cisco IOS commands to the alarm advice.** Intake already reads Cisco IOS configurations, but `CMDS` in
+   [edgefdl/agent/knowledge.py](edgefdl/agent/knowledge.py) has no `cisco` entry, so such devices get the Linux/FRR
+   fallback. Follow [Adding a vendor command template](#adding-a-vendor-command-template) and run the advice tests:
+
+   ```bash
+   python -m unittest tests.test_engine.RehearsalTest
+   ```
+
+2. **Try your own topology.** Copy the demo topology, change devices, links and speeds to resemble a network you
+   know, and let EdgeFDL check it and print the monitored targets and the coverage plan. An error message that does not
+   tell you what to fix is a good first issue in itself.
+
+   ```bash
+   cp configs/demo_topology.yaml runs/my_topology.yaml
+   python -m edgefdl topo runs/my_topology.yaml
+   ```
+
+3. **Translate one piece of the interface.** The help of a subcommand (`python -m edgefdl serve --help`) or a panel of
+   the dashboard ([edgefdl/core/web/index.html](edgefdl/core/web/index.html)) is a good size. Show the Chinese and
+   English strings in the pull request; the bilingual UI of the [roadmap](ROADMAP.md) will reuse them.
+4. **Walk through the quick start and report what stopped you.** Run `docker compose up` or
+   [docs/quickstart.md](docs/quickstart.md) on a clean machine and open an issue, or a pull request for the page, for
+   each step that was wrong or unclear. Name your operating system and versions.
+5. **Add a real-stack check.** Add one more assertion to [scripts/netns_smoke.py](scripts/netns_smoke.py), for example
+   on an interface counter after a fault, with its `check(name, ok, detail)` helper
+   ([Real-stack checks](#real-stack-checks)), and run `scripts/lab.sh smoke`.
+
+Run `tools/dev/ci.sh quick` before you open the pull request; it takes about half a minute.
+
 ## Checks before a pull request
 
 | Check | Command | When |
 |---|---|---|
 | Unit tests | `python -m unittest discover -s tests` | Always |
 | SPDX license headers | `python tools/dev/spdx.py` (`--fix` adds missing headers) | Always |
-| Quick CI suite | `tools/dev/ci.sh quick` | Always |
+| Quick CI suite: SPDX headers, dependency licenses, ruff, unit tests, online check | `tools/dev/ci.sh quick` | Always |
+| Lint | `tools/dev/ci.sh lint` (`python -m ruff check .`, configured in `pyproject.toml`) | Always; part of the quick suite |
+| Licenses of the runtime dependencies | `python tools/dev/licenses.py` ([docs/dependencies.md](docs/dependencies.md)) | Always; part of the quick suite |
+| Test coverage | `tools/dev/ci.sh coverage` (reports the total, no threshold) | When adding code |
+| Container image | `tools/dev/ci.sh image` (needs Docker with the compose plugin) | When changing `Dockerfile`, `compose.yaml`, `.dockerignore`, `requirements-lock.txt` or the `serve` command |
 | Real-stack smoke test | `scripts/lab.sh smoke` | When changing `edgefdl/vnet/`, `edgefdl/faults/injector.py` or `edgefdl/measure/probes.py` |
 | LXD command sequence | `python -m edgefdl.vnet.lxd configs/demo_topology.yaml --uplink ems=enp3s0` (dry run; review the printed commands) | When changing `edgefdl/vnet/lxd.py` or `edgefdl/vnet/stack.py` |
 | Robustness criteria | See "Changes that affect accuracy or robustness" | When changing detection, diagnosis or alarm logic |
@@ -106,8 +147,8 @@ core: require own-link evidence before a secondary alarm so that one fault canno
 ```
 
 - `<area>` is the module, directory or file you changed, for example `intake`, `topology`, `vnet`, `faults`,
-  `measure`, `agent`, `core`, `web`, `api`, `bench`, `robust`, `scripts`, `tests`, `docs`, `results`, `ci`,
-  `readme`, `changelog`.
+  `measure`, `agent`, `core`, `web`, `api`, `bench`, `robust`, `scripts`, `tests`, `docs`, `results`, `ci`, `deps`,
+  `image`, `readme`, `changelog`.
 - The first line says what changed and why in one sentence.
 - The body explains the motivation and how you verified the change: the checks you ran and, for any number you
   quote, its conditions (backend, topology, seed, sample count, CPU, Python and PyTorch versions).
@@ -242,4 +283,5 @@ You may use AI assistants to write code, tests or documentation. You remain resp
 By submitting a contribution you agree that it is licensed under the [Apache License 2.0](LICENSE) (section 5 of the
 license). There is no contributor license agreement, and a DCO sign-off (`Signed-off-by`) is not required; you may
 add one if your organization asks for it. New runtime dependencies must use an OSI-approved open-source license
-and be added to `requirements.txt`, `pyproject.toml` and [NOTICE](NOTICE).
+and be added to `requirements.txt`, `pyproject.toml`, `requirements-lock.txt`, [NOTICE](NOTICE) and
+[docs/dependencies.md](docs/dependencies.md).

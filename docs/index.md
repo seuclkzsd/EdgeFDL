@@ -25,7 +25,7 @@ the pages translate the labels you will see.
 | Page | Content |
 |---|---|
 | [Quick start](quickstart.md) | Install on Linux (CPU-only PyTorch is enough), start the dashboard with the bundled model, inject faults from the page and read the alarm, train a model with the pipeline, run the evaluation, self-test and robustness suite, the real-protocol-stack lab in Docker, troubleshooting |
-| [Deployment](deployment.md) | Preparing EdgeFDL for a specific network on an EMS (in 0.1.2 `serve` measures the network's equivalent virtual network): requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
+| [Deployment](deployment.md) | Preparing EdgeFDL for a specific network on an EMS (in 0.1.2 `serve` measures the network's equivalent virtual network): requirements and measured footprint, describing the network with the intake form and device configurations, the three equivalent-network backends (`sim`, `netns`, `lxd`), training, on-site baseline learning, the container image, multi-alarm and single-alarm modes, alarm sinks, Prometheus, log rotation, security |
 | [REST API and integrations](api.md) | Every HTTP endpoint with real example responses and error messages, the cross-site request checks, the alarm object (including device-down alarms), Prometheus metrics, Syslog and Webhook formats, the CSV log schemas |
 
 ## How it works
@@ -57,4 +57,6 @@ screenshots are in [`docs/media/`](media/).
 | [SECURITY.md](../SECURITY.md) | Reporting vulnerabilities, response times, what EdgeFDL reads, writes, executes and sends |
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Community standards |
 | [ROADMAP.md](../ROADMAP.md) · [CHANGELOG.md](../CHANGELOG.md) | Quarterly plan with success criteria and non-goals; version history |
+| [SUPPORT.md](../SUPPORT.md) | Where to ask a question and what to include |
+| [Dependencies and licenses](dependencies.md) | Every Python runtime dependency with its version and license, external programs and the distribution boundary, how the lock file is updated |
 | [LICENSE](../LICENSE) · [NOTICE](../NOTICE) · [CITATION.cff](../CITATION.cff) | Apache-2.0; attributions and third-party components; how to cite |

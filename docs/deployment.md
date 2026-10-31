@@ -69,6 +69,7 @@ machines.
 | Mode | Privileges |
 |---|---|
 | `sim` backend: intake, training, evaluation, self-test, `serve` | An ordinary user |
+| [Container image](#container-image) (`sim` backend, `serve`) | None inside the container; access to Docker to start it |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`), or the privileged lab container of [`scripts/lab.sh`](../scripts/lab.sh) |
 | `lxd` backend | Membership of the `lxd` group |
 
@@ -299,6 +300,52 @@ bridged uplink, adds `--learn-rounds 120` (the service then first prints `上线
 `serve` runs in the foreground. Exceptions in the measurement loop are caught and counted (`errors` in
 `/api/status`), so one bad round does not stop the service; a failing log write, alarm sink or advice generation is
 counted the same way and does not stop the alarm. Ctrl-C stops the engine and closes the logs.
+
+### Container image
+
+[`compose.yaml`](../compose.yaml) runs the dashboard on the `sim` backend with the bundled model, so that the system
+can be tried and tested without a Python environment:
+
+```bash
+docker compose up                # builds the image on the first run; dashboard on http://127.0.0.1:8460
+docker compose down --volumes    # removes the container and its logs
+```
+
+The image is built on your machine from the root [`Dockerfile`](../Dockerfile): the Python 3.12 base image pinned by
+digest, the CPU build of PyTorch and the other packages of
+[`requirements-lock.txt`](../requirements-lock.txt), installed with their hashes. Measured size, memory and the
+end-to-end result are in [`results/docker_check.json`](../results/docker_check.json); evaluating
+`results/model.pt` on the test set inside the image gives a file byte-identical to
+[`results/eval_test.json`](../results/eval_test.json).
+
+The container runs as UID 10001 with a read-only root file system, no capabilities, `no-new-privileges`, 2 CPUs and
+2 GB of memory. The CSV logs are in the `logs` volume, mounted at `/data`, and the REST API works as on a bare-metal
+`serve` ([api.md](api.md)). The dashboard is published on the host's `127.0.0.1` only, because the service has no
+authentication ([section 6](#6-security)). The image contains no network tools: the `netns` and `lxd` backends do not
+run in it, and they need the privileges in [section 1](#software-and-privileges). `linux/amd64` is the only platform of
+the lock file.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EDGEFDL_PORT` | `8460` | Port on the host's loopback address |
+| `EDGEFDL_INTERVAL` | `2` | Measurement interval in seconds (the demo's 2 s, not the production 5 s) |
+| `EDGEFDL_IMAGE` | `edgefdl:local` | Name of the image |
+| `EDGEFDL_REGISTRY` | `docker.io/library` | Registry prefix of the base image, for a mirror |
+| `EDGEFDL_PIP_INDEX` | `https://pypi.org/simple` | PyPI index for the build, for a mirror |
+| `EDGEFDL_PIP_FIND_LINKS` | empty | Additional source of wheels for the build, for a mirror of the PyTorch CPU wheels |
+
+Mirrors do not change what is installed, because pip checks every file against the hash in the lock file. For example,
+in mainland China:
+
+```bash
+export EDGEFDL_REGISTRY=docker.1ms.run/library
+export EDGEFDL_PIP_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+export EDGEFDL_PIP_FIND_LINKS=https://mirrors.aliyun.com/pytorch-wheels/cpu/
+docker compose up --build
+```
+
+`tools/dev/ci.sh image` builds the image, starts it, checks these settings and repeats the end-to-end check through the
+published port: inject a fault through the REST API, await the alarm, clear the fault, await the recovery, stop.
 
 ### On-site baseline learning
 

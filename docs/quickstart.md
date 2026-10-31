@@ -15,6 +15,17 @@ runs against a simulated copy of the 12-device demo network.
 The commands below run from the repository root. The terminal output, CLI help and dashboard are in Chinese; this
 page translates what you will see.
 
+**With Docker** the first two steps are one command. It builds the image on the first run and needs no Python on the
+machine; continue at [section 3](#3-inject-a-fault-and-read-the-alarm), and stop with Ctrl-C:
+
+```bash
+git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
+docker compose up
+```
+
+Open <http://127.0.0.1:8460>; the address `0.0.0.0:8460` in the log is the one inside the container. The image, its
+settings and mirrors are described in [Deployment](deployment.md#container-image).
+
 ## 1. Install
 
 ```bash

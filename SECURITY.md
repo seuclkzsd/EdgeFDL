@@ -62,7 +62,9 @@ only after a CORS preflight that the server does not answer; a `POST` whose `Ori
 header, including `Origin: null`, is refused with 403; while the server listens on a loopback address, it answers
 only requests whose `Host` names `localhost`, `127.0.0.1`, `::1` or the bound address (any port), so a page served
 from an attacker's domain that resolves to 127.0.0.1 gets 403. With `--host` set to a non-loopback address the
-`Host` check is off and the other checks remain. Request bodies are limited to 65,536 bytes, and fault values are
+`Host` check is off and the other checks remain. The container of [`compose.yaml`](compose.yaml) listens on
+`0.0.0.0` inside the container, so the `Host` check is off there too, and its port is published only on the host's
+`127.0.0.1`. Request bodies are limited to 65,536 bytes, and fault values are
 validated ([docs/api.md](docs/api.md#post-apiinject-and-post-apiclear)). In scope: requests that reach other files,
 execute code, change engine state without the inject endpoints, stop the measurement loop, or get past these
 cross-site checks from a browser.
@@ -141,14 +143,16 @@ configuration. Vendor commands in alarms are advice for the operator and are not
   the topology and addressing of the network: handle them as internal network documentation, and replace names
   and addresses before sharing them in issues or field reports.
 - **Environment variables read:** `EDGEFDL_LLM_MODEL` and `EDGEFDL_LLM_KEY` (`intake --llm`),
-  `EDGEFDL_ROBUST_SEED` (`robust`); `scripts/lab.sh` reads `EDGEFDL_LAB_IMAGE` and `EDGEFDL_APT_MIRROR`. EdgeFDL
-  does not modify the environment of the calling shell.
+  `EDGEFDL_ROBUST_SEED` (`robust`); `scripts/lab.sh` reads `EDGEFDL_LAB_IMAGE` and `EDGEFDL_APT_MIRROR`;
+  `compose.yaml` reads `EDGEFDL_PORT`, `EDGEFDL_INTERVAL`, `EDGEFDL_IMAGE`, `EDGEFDL_REGISTRY`, `EDGEFDL_PIP_INDEX`
+  and `EDGEFDL_PIP_FIND_LINKS`. EdgeFDL does not modify the environment of the calling shell.
 
 ### Privileges
 
 | Mode | Privileges needed |
 |---|---|
 | `sim` backend: training, evaluation, `bench`, `robust`, `serve` in simulation | An ordinary user; no root, no system service |
+| Container of [`compose.yaml`](compose.yaml) (`sim` backend) | None inside the container: UID 10001, read-only root file system, all capabilities dropped, `no-new-privileges`; it writes only to the `/data` volume and `/tmp`. Starting it needs access to Docker |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`) to create namespaces, configure `tc` and run FRR; `scripts/lab.sh` runs it inside a privileged container started with `--network none` |
 | `lxd` backend | A member of the `lxd` group |
 | `vnet up` / `vnet down` with `--dry-run` (`netns` or `lxd`) | An ordinary user: the command sequence is printed and nothing is executed (the `lxd` dry run generates the FRR files in a temporary directory and removes it). `python -m edgefdl.vnet.lxd` prints the complete LXD deployment sequence the same way |
