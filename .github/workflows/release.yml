@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
 # Release on tags v*: check that the tag is v<edgefdl.__version__> and that CHANGELOG.md holds a
-# dated section for that version, run the license check, the unit tests and the end-to-end serve
+# dated section for that version, run the license checks, the unit tests and the end-to-end serve
 # check, build the sdist and the wheel, and publish a GitHub Release whose notes are that CHANGELOG
 # section, with the packages, the demo model bundle (results/model.pt as edgefdl-demo-model.pt), a
 # tarball of results/ and SHA256SUMS:
@@ -64,8 +64,8 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install numpy pyyaml psutil build
 
-      - name: License headers, unit tests, online system end to end
-        run: tools/dev/ci.sh licenses tests serve
+      - name: License headers, licenses of the runtime dependencies, unit tests, online system end to end
+        run: tools/dev/ci.sh licenses deps tests serve
 
       - name: Packages and release assets (sdist, wheel, model bundle, results tarball, SHA256SUMS)
         run: tools/dev/ci.sh release

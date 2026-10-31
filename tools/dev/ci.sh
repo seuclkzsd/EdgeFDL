@@ -8,8 +8,13 @@
 #
 #   tools/dev/ci.sh [STEP...]          default: quick
 #     licenses   tools/dev/spdx.py: every source file carries its SPDX license header
+#     deps       tools/dev/licenses.py: every Python runtime dependency installed here (the closure of
+#                requirements.txt) has a known license and none is strong copyleft
+#     lint       ruff check (configured in pyproject.toml; requirements-dev.txt)
 #     tests      the unit tests: python -m unittest discover -s tests -v; a test skipped because
 #                results/model.pt is missing fails the step
+#     coverage   the unit tests under coverage.py (requirements-dev.txt): total line coverage of edgefdl/
+#                on the console and in the job summary of GitHub Actions; there is no threshold
 #     serve      the online system end to end on the simulation backend: `edgefdl serve` with
 #                results/model.pt on a free local port (0.2 s rounds), a link-down fault injected on
 #                L4 through POST /api/inject, the link-down alarm on L4 awaited (<= 60 s), the fault
@@ -24,6 +29,13 @@
 #                must carry the dashboard (edgefdl/core/web/index.html), the license files and the
 #                `edgefdl` command; installed into a fresh virtual environment, the wheel must pass
 #                the serve check above from outside the source tree
+#     image      the container image: compose.yaml built and started under a unique project name on a
+#                free local port; healthy, non-root, read-only, no capabilities, not privileged; the
+#                Python packages equal requirements-lock.txt, their licenses pass tools/dev/licenses.py
+#                and match the table in docs/dependencies.md; then the serve check above through the
+#                published port; with CI_IMAGE_TESTSET also the evaluation of the bundled model inside
+#                the image; a stop must be graceful. Containers, volume and image are removed afterwards;
+#                needs Docker with the compose plugin
 #     realstack  the real protocol stack: scripts/lab.sh build && scripts/lab.sh smoke (26 checks of
 #                the netns backend with FRR OSPF and tc in a privileged Docker container); needs Docker
 #     version    the release checks: the tag (RELEASE_TAG, default v<edgefdl.__version__>) must be
@@ -32,26 +44,34 @@
 #                build/release/notes.md (and version= / tag= to $GITHUB_OUTPUT inside GitHub Actions)
 #     release    version + dist, then the release assets in build/release/assets: the wheel and
 #                sdist, results/model.pt as edgefdl-demo-model.pt, a tarball of results/ and SHA256SUMS
-#     quick      licenses tests serve
-#     all        licenses tests serve pipeline dist realstack
+#     quick      licenses deps lint tests serve
+#     all        licenses deps lint tests coverage serve pipeline dist image realstack
+#
+# lint and coverage need the tools of requirements-dev.txt: without them the step says so and passes
+# on a developer machine, and fails in GitHub Actions.
 #
 # Environment: PYTHON (interpreter, default python3); CI_TMP (work directory of serve / pipeline /
 # dist, default a new directory under ${TMPDIR:-/tmp} that is removed on exit unless CI_KEEP=1);
 # CI_WORKERS / CI_THREADS (pipeline sample-generation processes / training threads, default 2 / 2);
 # EDGEFDL_APT_MIRROR (realstack: Debian mirror for the image build, default deb.debian.org);
-# EDGEFDL_LAB_IMAGE (realstack: image tag, default edgefdl-lab:latest).
+# EDGEFDL_LAB_IMAGE (realstack: image tag, default edgefdl-lab:latest);
+# EDGEFDL_REGISTRY / EDGEFDL_PIP_INDEX / EDGEFDL_PIP_FIND_LINKS (image: mirrors for the build, see
+# docs/deployment.md); CI_IMAGE_PROJECT (image: compose project name and image tag, default
+# edgefdl-ci-<pid>); CI_IMAGE_REPORT (image: where to keep the measured facts as JSON, default only in
+# the work directory); CI_IMAGE_TESTSET (image: a test.npz; evaluate results/model.pt on it inside the
+# image and require a file identical to results/eval_test.json).
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
 export PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 py="${PYTHON:-python3}"
-all=(licenses tests serve pipeline dist realstack)
-known=(licenses tests serve pipeline dist realstack version release quick all)
+all=(licenses deps lint tests coverage serve pipeline dist image realstack)
+known=(licenses deps lint tests coverage serve pipeline dist image realstack version release quick all)
 
 steps=()
 for s in "${@:-quick}"; do
   case "$s" in
-    quick) steps+=(licenses tests serve) ;;
+    quick) steps+=(licenses deps lint tests serve) ;;
     all) steps+=("${all[@]}") ;;
     *) steps+=("$s") ;;
   esac
@@ -90,9 +110,41 @@ tests_check() {
   fi
 }
 
+# ------------------------------------------------------------------------------- lint, coverage
+# need_dev MODULE: the dev tool is importable, or say what to install (a failure in GitHub Actions)
+need_dev() {
+  "$py" -c "import $1" 2>/dev/null && return 0
+  echo "ci: $1 is not installed: pip install -r requirements-dev.txt" >&2
+  [ -z "${GITHUB_ACTIONS:-}" ] || exit 1
+  return 1
+}
+
+lint_check() {
+  need_dev ruff || return 0
+  "$py" -m ruff check .
+}
+
+coverage_check() {
+  need_dev coverage || return 0
+  export COVERAGE_FILE="$tmp/.coverage"
+  "$py" -m coverage run --source=edgefdl -m unittest discover -s tests 2>&1 | tail -n 3
+  [ "${PIPESTATUS[0]}" = 0 ] || return 1
+  "$py" -m coverage report --skip-empty | tee "$tmp/coverage.txt"
+  local total
+  total="$(awk '/^TOTAL/ {print $NF}' "$tmp/coverage.txt")"
+  echo "coverage: total $total of edgefdl/ (line coverage of the unit tests)"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    { echo "### Test coverage: $total"; echo; echo "Line coverage of \`edgefdl/\` by the unit tests (Python $("$py" -c 'import platform; print(platform.python_version())'))."
+      echo; echo '<details><summary>By file</summary>'; echo; echo '```text'; cat "$tmp/coverage.txt"; echo '```'
+      echo; echo '</details>'; } >> "$GITHUB_STEP_SUMMARY"
+  fi
+}
+
 # ---------------------------------------------------------------------------------------- serve
 # serve_check DIR CWD CMD...: run `CMD serve` (CMD: `python -m edgefdl` or an installed `edgefdl`)
-# from the directory CWD, files in DIR, and drive it through the REST API.
+# from the directory CWD, files in DIR, and drive it through the REST API. With CI_SERVE_URL set the
+# same checks drive that running server instead (the image step) and CMD is not used. With
+# CI_SERVE_REPORT set, the timings are also written to that JSON file.
 serve_check() {
   local dir="$1" cwd="$2"
   shift 2
@@ -101,17 +153,21 @@ serve_check() {
 import json, os, signal, socket, subprocess, sys, time, urllib.request
 
 out, cwd, model, edgefdl = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
-with socket.socket() as s:                       # a free local port
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-base = f"http://127.0.0.1:{port}"
+base = os.environ.get("CI_SERVE_URL")
+report = {}
 http = urllib.request.build_opener(urllib.request.ProxyHandler({}))   # local server: never via a proxy
 log_path = os.path.join(out, "serve.log")
-cmd = edgefdl + ["serve", "--model", model, "--backend", "sim", "--interval", "0.2",
-                 "--host", "127.0.0.1", "--port", str(port), "--log-dir", os.path.join(out, "logs")]
-print("serve:", " ".join(cmd), "(in %s)" % cwd)
-log = open(log_path, "w")
-proc = subprocess.Popen(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
+proc = log = None
+if not base:
+    with socket.socket() as s:                   # a free local port
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    cmd = edgefdl + ["serve", "--model", model, "--backend", "sim", "--interval", "0.2",
+                     "--host", "127.0.0.1", "--port", str(port), "--log-dir", os.path.join(out, "logs")]
+    print("serve:", " ".join(cmd), "(in %s)" % cwd)
+    log = open(log_path, "w")
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
 
 
 def get(path):
@@ -129,7 +185,7 @@ def post(path, body):
 def wait(what, cond, timeout):
     t0 = time.time()
     while time.time() - t0 < timeout:
-        if proc.poll() is not None:
+        if proc is not None and proc.poll() is not None:
             raise SystemExit(f"serve: the server exited with code {proc.returncode} while waiting for {what}")
         try:
             v = cond()
@@ -167,6 +223,8 @@ try:
     s = status()
     print(f"serve: alarm {a['alarm_id']} ({a['fault_type']} on {a['link_id']}, severity {a['severity']}) "
           f"{dt:.1f} s / {s['round'] - r0} rounds after the injection")
+    report.update(fault_type=a["fault_type"], link=a["link_id"], alarm_after_s=round(dt, 1),
+                  alarm_after_rounds=s["round"] - r0)
     others = [x for x in s.get("active_alarms") or [] if x is not a and x.get("alarm_id") != a["alarm_id"]]
     if others:
         print("serve: note: further active alarms:", [(x["fault_type"], x["link_id"]) for x in others])
@@ -174,6 +232,7 @@ try:
     assert post("/api/clear", {}).get("ok")
     _, dt = wait("recovery of the L4 alarm", lambda: l4_alarm(status()) is None, 60)
     print(f"serve: the alarm cleared {dt:.1f} s after the fault was cleared")
+    report["cleared_after_s"] = round(dt, 1)
 
     hist = json.loads(get("/api/alarms?n=20"))
     assert any(x.get("alarm_id") == a["alarm_id"] for x in hist), "alarm missing from /api/alarms"
@@ -186,19 +245,24 @@ try:
     assert values["edgefdl_alarms_total"] >= 1 and values["edgefdl_round"] >= 1, metrics
     print(f"serve: /metrics: {len(values)} samples, edgefdl_round {values['edgefdl_round']:.0f}, "
           f"edgefdl_alarms_total {values['edgefdl_alarms_total']:.0f}")
+    report.update(alarms_total=int(values["edgefdl_alarms_total"]), metrics_samples=len(values))
+    if os.environ.get("CI_SERVE_REPORT"):
+        with open(os.environ["CI_SERVE_REPORT"], "w", encoding="utf-8") as f:
+            json.dump(report, f)
     ok = True
 finally:
-    if proc.poll() is None:
-        proc.send_signal(signal.SIGINT)          # the server stops its engine on KeyboardInterrupt
-        try:
-            proc.wait(15)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-    log.close()
-    if not ok:
-        print("serve: server log (tail):")
-        print("".join(open(log_path, encoding="utf-8", errors="replace").readlines()[-40:]))
+    if proc is not None:
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)      # the server stops its engine on KeyboardInterrupt
+            try:
+                proc.wait(15)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        log.close()
+        if not ok:
+            print("serve: server log (tail):")
+            print("".join(open(log_path, encoding="utf-8", errors="replace").readlines()[-40:]))
 PY
 }
 
@@ -277,6 +341,110 @@ PY
   (cd "$dir" && bin/edgefdl --version && bin/python -c \
     'import edgefdl, sys; sys.exit(0 if edgefdl.__file__.startswith(sys.prefix) else "edgefdl not from the wheel")')
   serve_check "$tmp/dist-serve" "$dir" "$dir/bin/edgefdl"
+}
+
+# ---------------------------------------------------------------------------------------- image
+# image_steps: the checks of the image step. Runs in a subshell with `set -e`, so that the first
+# failure ends it and image_check still reaches its clean-up.
+image_steps() {
+  local cid t0
+  "${dc[@]}" build
+  "${dc[@]}" up --detach --wait
+  cid="$("${dc[@]}" ps -q edgefdl)"
+  docker inspect "$cid" > "$dir/inspect.json"
+  docker image inspect "$EDGEFDL_IMAGE" > "$dir/image.json"
+  docker exec "$cid" python -c 'import json, os, platform, numpy, torch, yaml, psutil
+print(json.dumps({"uid": os.getuid(), "python": platform.python_version(), "torch": torch.__version__,
+                  "numpy": numpy.__version__, "pyyaml": yaml.__version__, "psutil": psutil.__version__,
+                  "cuda": torch.cuda.is_available()}))' > "$dir/runtime.json"
+  # The lock, as installed in the image, and its licenses: the table must match docs/dependencies.md.
+  docker exec -i "$cid" python - --lock requirements-lock.txt --markdown < tools/dev/licenses.py > "$dir/licenses.md"
+  "$py" - "$dir/licenses.md" docs/dependencies.md <<'PY'
+import sys
+
+table, doc = (open(p, encoding="utf-8").read() for p in sys.argv[1:3])
+assert table.strip() in doc, "docs/dependencies.md: the table differs from licenses.py in the image:\n" + table
+print(f"image: {len(table.strip().splitlines()) - 2} packages equal requirements-lock.txt, licenses as documented")
+PY
+  CI_SERVE_URL="http://127.0.0.1:$EDGEFDL_PORT" CI_SERVE_REPORT="$dir/serve.json" \
+    serve_check "$dir/serve" "$root" unused
+  docker stats --no-stream --format '{{.MemUsage}}' "$cid" > "$dir/memory.txt"
+  if [ -n "${CI_IMAGE_TESTSET:-}" ]; then
+    mkdir -p "$dir/eval"
+    chmod a+w "$dir/eval"
+    docker run --rm --name "$project-eval" --network none --read-only --cap-drop ALL \
+      --security-opt no-new-privileges -v "$(realpath "$CI_IMAGE_TESTSET"):/testset/test.npz:ro" \
+      -v "$dir/eval:/out" "$EDGEFDL_IMAGE" eval --model results/model.pt --data /testset/test.npz \
+      --json /out/eval_test.json | tail -n 3
+  fi
+  t0=$SECONDS
+  "${dc[@]}" stop
+  echo "$((SECONDS - t0))" > "$dir/stop_s.txt"
+  docker inspect "$cid" > "$dir/stopped.json"
+  "$py" - "$dir" "$project" "${CI_IMAGE_REPORT:-$dir/image_check.json}" <<'PY'
+import json, os, platform, re, subprocess, sys, time
+
+d, project, out = sys.argv[1:4]
+load = lambda n: json.load(open(os.path.join(d, n), encoding="utf-8"))
+sh = lambda *c: subprocess.run(c, capture_output=True, text=True, check=True).stdout.strip()
+c, stopped, img, run = load("inspect.json")[0], load("stopped.json")[0], load("image.json")[0], load("runtime.json")
+h = c["HostConfig"]
+checks = {"non-root user": run["uid"] != 0 and c["Config"]["User"].split(":")[0] not in ("", "0", "root"),
+          "not privileged": h["Privileged"] is False, "read-only root file system": h["ReadonlyRootfs"] is True,
+          "all capabilities dropped": [x.upper() for x in h["CapDrop"] or []] in (["ALL"], ["CAP_ALL"]),
+          "no-new-privileges": any("no-new-privileges" in x for x in h["SecurityOpt"] or []),
+          "healthy": c["State"]["Health"]["Status"] == "healthy", "CPU-only PyTorch": run["cuda"] is False,
+          "published on the loopback address only":
+              all(b["HostIp"] == "127.0.0.1" for b in h["PortBindings"]["8460/tcp"]),
+          "graceful stop (exit code 0, not killed)": stopped["State"]["ExitCode"] == 0}
+failed = [k for k, v in checks.items() if not v]
+assert not failed, f"image: failed: {failed}"
+stop_s = int(open(os.path.join(d, "stop_s.txt")).read())
+facts = {"test_conditions": {"date": time.strftime("%Y-%m-%d"), "git_commit": sh("git", "rev-parse", "HEAD"),
+                             "machine": platform.machine(), "kernel": platform.release(),
+                             "docker": sh("docker", "version", "--format", "{{.Server.Version}}"),
+                             "compose": sh("docker", "compose", "version", "--short"),
+                             "interval_s": float(c["Args"][c["Args"].index("--interval") + 1]),
+                             "backend": "sim", "model": "results/model.pt", "limits": {"cpus": 2, "memory": "2g"}},
+         "image": {"size_bytes": img["Size"], "size_mb": round(img["Size"] / 1e6, 1),
+                   "base": re.search(r"^FROM \S+?/(python\S+)", open("Dockerfile", encoding="utf-8").read(), re.M).group(1)},
+         "runtime": {k: run[k] for k in ("python", "torch", "numpy", "pyyaml", "psutil")},
+         "checks": {k: "pass" for k in checks},
+         "end_to_end": load("serve.json"), "memory_after_run": open(os.path.join(d, "memory.txt")).read().strip(),
+         "stop_seconds": stop_s}
+if os.path.exists(os.path.join(d, "eval", "eval_test.json")):
+    got = open(os.path.join(d, "eval", "eval_test.json"), "rb").read()
+    assert got == open("results/eval_test.json", "rb").read(), "image: eval differs from results/eval_test.json"
+    facts["eval_in_image"] = {"testset": os.path.basename(os.environ["CI_IMAGE_TESTSET"]),
+                              "byte_identical_to_results_eval_test_json": True}
+os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(facts, f, indent=1)
+    f.write("\n")
+print(f"image: {facts['image']['size_mb']} MB, {facts['runtime']}, alarm {facts['end_to_end']['alarm_after_s']} s, "
+      f"cleared {facts['end_to_end']['cleared_after_s']} s, memory {facts['memory_after_run']}, stop {stop_s} s")
+PY
+}
+
+image_check() {
+  if ! docker compose version >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+    echo "ci.sh: image needs a working Docker daemon and the compose plugin" >&2
+    return 1
+  fi
+  local project="${CI_IMAGE_PROJECT:-edgefdl-ci-$$}" dir="$tmp/image" rc=0
+  local dc=(docker compose -p "$project")
+  rm -rf "$dir" && mkdir -p "$dir"
+  EDGEFDL_PORT="$("$py" -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
+  EDGEFDL_IMAGE="$project:local"
+  export EDGEFDL_PORT EDGEFDL_IMAGE
+  set +e
+  (set -e; image_steps)
+  rc=$?
+  set -e
+  [ "$rc" = 0 ] || "${dc[@]}" logs --tail 40 || true
+  "${dc[@]}" down --volumes --remove-orphans || true
+  docker image rm "$EDGEFDL_IMAGE" >/dev/null 2>&1 || true
+  return "$rc"
 }
 
 # ------------------------------------------------------------------------------------ realstack
@@ -387,10 +555,14 @@ release_assets() {
 for s in "${steps[@]}"; do
   case "$s" in
     licenses) step licenses "$py" tools/dev/spdx.py ;;
+    deps) step deps "$py" tools/dev/licenses.py ;;
+    lint) step lint lint_check ;;
     tests) step tests tests_check ;;
+    coverage) step coverage coverage_check ;;
     serve) step serve serve_check "$tmp/serve" "$root" "$py" -m edgefdl ;;
     pipeline) step pipeline pipeline_check ;;
     dist) step dist dist_check ;;
+    image) step image image_check ;;
     realstack) step realstack realstack_check ;;
     version) step version version_check ;;
     release) step version version_check; step dist dist_check; step release release_assets ;;

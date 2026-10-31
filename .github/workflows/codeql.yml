@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# CodeQL code scanning of the Python sources, on main, on pull requests and weekly. Code scanning is
+# available to a public repository without further licensing, so the first job asks the API for the
+# repository's visibility and the analysis is skipped while the repository is private; a skipped job
+# does not fail the workflow. The API is used because the event payload of a scheduled run has no
+# repository object. Actions are pinned to commit SHAs, their release tag in the comment.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visibility:
+    name: repository visibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      public: ${{ steps.repo.outputs.public }}
+    steps:
+      - name: Is the repository public?
+        id: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          private="$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)"
+          echo "private: $private"
+          if [ "$private" = false ]; then echo "public=true"; else echo "public=false"; fi >> "$GITHUB_OUTPUT"
+
+  analyze:
+    name: analyze (Python)
+    needs: visibility
+    if: needs.visibility.outputs.public == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: python
+          build-mode: none
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1

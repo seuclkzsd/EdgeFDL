@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# Weekly update proposals, grouped into one pull request per ecosystem. Labels: .github/labels.yml.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    labels: ["dependencies", "area: ci"]
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # requirements.txt, requirements-dev.txt, requirements-lock.txt and pyproject.toml. PyTorch stays out:
+  # its CPU wheels are not on PyPI, and its version is a condition of the published results. Change it
+  # with tools/dev/lock.py (docs/dependencies.md, "Updating").
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    labels: ["dependencies"]
+    ignore:
+      - dependency-name: torch
+    groups:
+      python:
+        patterns: ["*"]
