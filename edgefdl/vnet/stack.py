@@ -84,7 +84,8 @@ def parse_lsdb(js: dict, topo: Topology, last_cost: Optional[Dict[str, float]] =
                ) -> Dict[str, LsdbEntry]:
     """FRR `show ip ospf database router json` → 每条链路的邻接状态与开销。
 
-    路由器—路由器链路：两端 router-LSA 都出现指向对端的 point-to-point 链接才算邻接正常；
+    路由器—路由器链路：两端 router-LSA 都出现指向对端的 point-to-point 或 Transit Network 链接才算邻接
+    正常（现网以太口默认是广播网络类型，邻居失联后退化为 Stub Network）；
     路由器—主机链路：接口所在网段以 Stub Network 出现在路由器 LSA 中即视为接口正常。"""
     rid2node = {n.loopback.split("/")[0]: n.name for n in topo.nodes.values() if n.loopback}
     p2p: Dict[Tuple[str, str], float] = {}
@@ -98,7 +99,7 @@ def parse_lsdb(js: dict, topo: Topology, last_cost: Optional[Dict[str, float]] =
             for lk in (lsa.get("routerLinks") or {}).values():
                 t = lk.get("linkType", "")
                 m = float(lk.get("tos0Metric", 0))
-                if t.startswith("another Router"):
+                if t.startswith("another Router") or t.startswith("a Transit"):
                     p2p[(node, lk.get("routerInterfaceAddress", ""))] = m
                 elif t.startswith("Stub"):
                     stub[(node, lk.get("networkAddress", ""))] = m
@@ -128,6 +129,7 @@ class KernelStackBackend(Backend):
     name = "kernel"
     TRAIN_PORT = 5300
     IPERF_PORT = 5400
+    LINUX_IFNAMES = True                        # 接口名要用于 ip link / tc / FRR 时须是合法 Linux 接口名
 
     def __init__(self, topo: Topology, plan: Optional[MeasurePlan] = None,
                  use_frr: bool = True, workers: int = 48, trace_workers: int = 8,
@@ -135,7 +137,8 @@ class KernelStackBackend(Backend):
         """ospf_timers=(hello, dead) 秒。默认 1/4 求快速收敛；现网多为 10/40。两者 dead/hello 比相同，
         但时间尺度压缩 10 倍后，丢包引起的邻接抖动按墙钟计也会频繁 10 倍。"""
         super().__init__(topo, plan)
-        check_linux_ifnames(topo)               # 接口名直接用于 ip link / tc / FRR，须是合法 Linux 接口名
+        if self.LINUX_IFNAMES:
+            check_linux_ifnames(topo)
         self.ospf_timers = ospf_timers
         self.ex: NodeExec = NodeExec()
         self.use_frr = use_frr
@@ -307,10 +310,16 @@ class KernelStackBackend(Backend):
             return {}
         return parse_lsdb(js, self.topo, self._lsdb_cost)
 
+    def _trace_list(self) -> list:
+        return [t for t in self._targets if getattr(t, "src", None) is None]
+
+    def _bw_cand(self) -> List[str]:
+        return [l.id for l in self.topo.links
+                if self.topo.nodes[l.a].agent or self.topo.nodes[l.b].agent]
+
     def _bw_links(self) -> List[str]:
         k = self.plan.bw_links_per_round
-        cand = [l.id for l in self.topo.links
-                if self.topo.nodes[l.a].agent or self.topo.nodes[l.b].agent]
+        cand = self._bw_cand()
         if not cand or k <= 0:
             return []
         out = [cand[(self._bw_cursor + i) % len(cand)] for i in range(min(k, len(cand)))]
@@ -329,8 +338,7 @@ class KernelStackBackend(Backend):
             pf = {t.id: pool.submit(self._ping, getattr(t, "src", None) or v, t.ip, t.id,
                                     p.ping_count, p.ping_interval_s)
                   for t in self._targets}
-            tf = {t.id: tpool.submit(self._trace, t.ip) for t in self._targets
-                  if getattr(t, "src", None) is None} if do_trace else {}
+            tf = {t.id: tpool.submit(self._trace, t.ip) for t in self._trace_list()} if do_trace else {}
             bf = {lid: pool.submit(self._train, lid, p.bw_train_pkts, p.bw_pkt_size)
                   for lid in self._bw_links()}
             lf = pool.submit(self._read_lsdb)

@@ -5,16 +5,17 @@ equivalent virtual network, training the per-network model, running the online s
 server (EMS), and connecting its alarms to the systems you already use. For a first look at the system, start with
 the [quick start](quickstart.md).
 
-**Scope of 0.1.2.** `serve` measures the equivalent virtual network of the site through one of the three backends
-(`sim`, `netns`, `lxd`); measuring the production network itself is the first step of the
-[roadmap](../ROADMAP.md) ([section 8](#8-scope-of-v01-and-next-steps)). With this release you describe the network,
-train and evaluate its model, and run the online service, its alarms and its integrations against the equivalent
-network, which prepares the operators and the receiving systems for the connection to the physical network.
+**Scope.** You describe the network, train and evaluate its model, and run the online service, its alarms and its
+integrations against the equivalent network (`sim`, `netns`, `lxd`). The `live` backend then runs the same service
+against the network itself, read-only, from the EMS ([Connecting to a real network](#connecting-to-a-real-network)). It
+is validated black-box on a real protocol stack; it has not yet run on physical devices
+([section 8](#8-scope-of-v01-and-next-steps)).
 
 1. [Requirements](#1-requirements)
 2. [Describe the network](#2-describe-the-network)
 3. [Build the equivalent network and train the model](#3-build-the-equivalent-network-and-train-the-model)
 4. [Run the online service](#4-run-the-online-service)
+- [Connecting to a real network](#connecting-to-a-real-network)
 5. [Integrations](#5-integrations)
 6. [Security](#6-security)
 7. [Checklist before going live](#7-checklist-before-going-live)
@@ -25,7 +26,7 @@ network, which prepares the operators and the receiving systems for the connecti
 | Where | What runs | Produces |
 |---|---|---|
 | Offline, once per network (on the EMS or on a separate training server) | `intake` → `baseline` → `gen` → `train` → `eval` / `bench`, or all of them through `pipeline`, against an equivalent virtual network | One model bundle, `model.pt`: weights, the topology, the normal baseline and the measurement plan |
-| Online, on the EMS | `serve --model model.pt`: measurement every 5 s, detector, agent, alarms, dashboard and REST API | CSV logs, alarms on the dashboard, the API, Syslog, Webhook and Prometheus |
+| Online, on the EMS | `serve --model model.pt` (on a real network with `--backend live`): measurement every 5 s, detector, agent, alarms, dashboard and REST API | CSV logs, alarms on the dashboard, the API, Syslog, Webhook and Prometheus |
 
 The bundle is the only file the online service needs. The equivalent virtual network is also where remediation
 actions are rehearsed before they are recommended, so the same topology model serves training, diagnosis and advice.
@@ -65,12 +66,14 @@ machines.
 | `psutil` (optional) | Process CPU and memory in `/api/status` and on the dashboard |
 | `iproute2` (`ip`, `tc`), `iputils-ping`, `traceroute`, `iperf3`, FRR (`zebra`, `ospfd`, `vtysh`), `python3` | The `netns` backend (inside each LXD container for `lxd`) |
 | LXD | The `lxd` backend |
+| `ping`, `traceroute` (the Linux `traceroute` package, which has `-I` and `-N`) | The `live` backend, on the EMS |
 
 | Mode | Privileges |
 |---|---|
 | `sim` backend: intake, training, evaluation, self-test, `serve` | An ordinary user |
 | `netns` backend | Root (`CAP_NET_ADMIN`, `CAP_SYS_ADMIN`), or the privileged lab container of [`scripts/lab.sh`](../scripts/lab.sh) |
 | `lxd` backend | Membership of the `lxd` group |
+| `live` backend | An ordinary user with `CAP_NET_RAW` on `traceroute` ([ICMP permissions](#icmp-permissions)) |
 
 Install as in the [quick start](quickstart.md#1-install), in a virtual environment owned by the user that will run
 the service.
@@ -264,9 +267,9 @@ online scenarios, inference latency and probe overhead.
 
 ## 4. Run the online service
 
-In 0.1.2 the online service measures the site's equivalent virtual network. Run the site model on it with the
-alarm sinks that the site uses, inject faults from the dashboard or through `POST /api/inject`, and check that the
-alarms, the advice and the integrations behave as expected:
+Start on the site's equivalent virtual network. Run the site model on it with the alarm sinks that the site uses,
+inject faults from the dashboard or through `POST /api/inject`, and check that the alarms, the advice and the
+integrations behave as expected:
 
 ```bash
 python -m edgefdl serve --model runs/site/model.pt --backend sim --engine numpy --log-dir runs/site/logs \
@@ -279,22 +282,26 @@ topology in the bundle; for these backends, train the model from the copy with L
 `pipeline --topo runs/site/topology-stack.yaml`), whose alarms then name those interfaces. All options below apply
 to every backend. A deployment whose backend is connected to a real network, for example an `lxd` deployment with a
 bridged uplink, adds `--learn-rounds 120` (the service then first prints `上线基线学习：120 轮（约 10 分钟）…`,
-"on-site baseline learning: 120 rounds, about 10 minutes") and `--no-inject`.
+"on-site baseline learning: 120 rounds, about 10 minutes") and `--no-inject`. The `live` backend measures the network
+directly and needs neither a virtual network nor `--no-inject`; see
+[Connecting to a real network](#connecting-to-a-real-network).
 
 | Option | Default | Meaning |
 |---|---|---|
 | `--model` | (required) | Model bundle |
-| `--backend` | `sim` | `sim`, `netns` or `lxd` |
+| `--backend` | `sim` | `sim`, `netns`, `lxd` or `live` |
 | `--host`, `--port` | `127.0.0.1`, `8460` | Address of the dashboard and API |
 | `--interval` | from the bundle (5 s) | Measurement interval in seconds |
 | `--log-dir` | `runs/live` | Directory of the CSV logs, relative to the working directory |
 | `--learn-rounds` | `0` | Learn the baseline on site for this many rounds before starting (0 keeps the bundle's baseline) |
+| `--baseline` | none | Use a baseline saved earlier (`baseline --backend live`) instead of learning one |
 | `--no-inject` | off | Disable `POST /api/inject` and `/api/clear` (they then return 403) |
 | `--single-alarm` | off | At most one active alarm at a time |
 | `--confirm` | `2` | Consistent diagnoses required before the first alarm |
 | `--engine` | `torch` | `numpy` runs the forward pass in NumPy (p99 0.302 ms instead of 0.575 ms); the bundle is still loaded with PyTorch |
 | `--sinks` | none | JSON list (or a single object) of alarm sinks, checked at start ([section 5](#5-integrations)) |
 | `--noise`, `--seed` | `0.1`, `0` | `sim` only: probability of a one-round transient per round, random seed |
+| `--lsdb-cmd`, `--endpoints`, `--infer-state`, `--trace-per-round`, `--skip-silent` | none | `live` only: see [Connecting to a real network](#connecting-to-a-real-network) |
 
 `serve` runs in the foreground. Exceptions in the measurement loop are caught and counted (`errors` in
 `/api/status`), so one bad round does not stop the service; a failing log write, alarm sink or advice generation is
@@ -418,11 +425,11 @@ timestamp suffix and a new one started; the 20 most recent archives are kept. Th
 
 ## 6. Security
 
-- **Read-only towards devices.** EdgeFDL never logs in to a production device and never writes device configuration.
-  The vendor commands in an alarm are advice for the operator and are not executed. Commands such as `tc`, `ip`,
-  `vtysh` and `lxc` act only on the equivalent virtual network.
-- **Disable fault injection.** Start every deployment that faces a real network with `--no-inject`; `POST
-  /api/inject` and `/api/clear` then return 403.
+- **Read-only towards devices.** EdgeFDL never writes device configuration, and it logs in to a device only through a
+  command you supply yourself (`--lsdb-cmd`, `--endpoints`). The vendor commands in an alarm are advice for the operator
+  and are not executed. Commands such as `tc`, `ip`, `vtysh` and `lxc` act only on the equivalent virtual network.
+- **Disable fault injection.** The `live` backend refuses `POST /api/inject` and `/api/clear` with 403 on its own.
+  Start every other deployment that faces a real network with `--no-inject`, which does the same.
 - **Local by default.** The dashboard and API have no authentication and no TLS, and `serve` binds to 127.0.0.1
   unless `--host` says otherwise. To reach them from elsewhere, use an SSH tunnel or a reverse proxy that adds
   authentication and TLS, or bind to an address of a management network that a firewall restricts.
@@ -448,27 +455,27 @@ timestamp suffix and a new one started; the 20 most recent archives are kept. Th
 
 What the process reads, writes, executes and sends:
 
-| | `sim` backend | `netns` / `lxd` backends |
-|---|---|---|
-| Reads | The model bundle (`serve`), topology, intake files, baselines and sample sets given on the command line | The same |
-| Writes | `--log-dir` (`serve`), the `--out` / `-o` paths of the offline commands | Also FRR files under `/etc/frr/efl-*` and `/var/run/frr/efl-*` (`netns`), or a temporary staging directory that is pushed into the containers and then removed (`lxd`) |
-| Executes | No external programs | `ip`, `tc`, `sysctl` (per-namespace keys only), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train probe of [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), FRR `zebra`, `ospfd`, `vtysh`; `lxc` for LXD |
-| Network | The HTTP port of `serve`; the configured Syslog and Webhook receivers; the `intake --llm` endpoint if given | Also the probe traffic of the measurement plan |
+| | `sim` backend | `netns` / `lxd` backends | `live` backend |
+|---|---|---|---|
+| Reads | The model bundle (`serve`), topology, intake files, baselines and sample sets given on the command line | The same | The same, and the `--endpoints` file |
+| Writes | `--log-dir` (`serve`), the `--out` / `-o` paths of the offline commands | Also FRR files under `/etc/frr/efl-*` and `/var/run/frr/efl-*` (`netns`), or a temporary staging directory that is pushed into the containers and then removed (`lxd`) | Only `--log-dir` and `--out` / `-o`, on the EMS |
+| Executes | No external programs | `ip`, `tc`, `sysctl` (per-namespace keys only), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train probe of [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), FRR `zebra`, `ospfd`, `vtysh`; `lxc` for LXD | `ping`, `traceroute`; your `--lsdb-cmd`; with `--endpoints`, your command prefixes around `ping`, `iperf3` and the packet-train probe. Anything else is refused by an allow-list |
+| Network | The HTTP port of `serve`; the configured Syslog and Webhook receivers; the `intake --llm` endpoint if given | Also the probe traffic of the measurement plan | Also the probes described in [Rate of probing](#rate-of-probing) |
 
 There is no telemetry and no update check. The full statement, with the environment variables read, is in
 [SECURITY.md](../SECURITY.md#data-handling-statement), which also explains how to report a vulnerability.
 
 ## 7. Checklist before going live
 
-In 0.1.2 the checklist applies to the service running on the site's equivalent network, and it is the starting
-point for the connection to the physical network on the roadmap.
-
 - [ ] `topo` shows the expected devices and links and lists the blind links. The virtual backends emulate their NQA
       / IP SLA probes; on the physical network these probes are to be configured on the devices, and reading their
-      results over SNMP is planned for 0.3.
+      results over SNMP is planned for 0.3. Until then a blind link is measured only if its end device is in the
+      `--endpoints` file.
+- [ ] `preflight` passes from the EMS: every address answers, or those that do not are understood and `--skip-silent`
+      is intended.
 - [ ] `eval_test.json` and `bench/bench.json` of the site model have been reviewed against [Results](results.md).
-- [ ] `serve` starts with `--no-inject`, `--learn-rounds` of at least 120, and a `--log-dir` on a disk with room for
-      two logs of up to about 4.1 GiB each.
+- [ ] `serve` starts with `--learn-rounds` of at least 120 (and, on any backend but `live`, `--no-inject`) and a
+      `--log-dir` on a disk with room for two logs of up to about 4.1 GiB each.
 - [ ] The dashboard and API are reachable only through a tunnel, an authenticating reverse proxy (passing the
       upstream `Host`) or a restricted management network.
 - [ ] A test alarm reached the Syslog or Webhook receiver (for example on a `sim` instance of the same model with
@@ -478,16 +485,15 @@ point for the connection to the physical network on the roadmap.
 
 ## 8. Scope of v0.1 and next steps
 
-- In 0.1.2, `serve` takes its measurements from one of the three backends, which all realise the equivalent
-  virtual network. The measurement data model and the CSV schema are shared by all backends, and the ping and
-  traceroute commands with their parsers run on the EMS, so they carry over to production devices unchanged;
-  packet trains and deep probes run between the two ends of a link and need a probe endpoint there. Running the
-  engine against a production network is planned in steps on the [roadmap](../ROADMAP.md): the LXD backend on hardware,
+- `serve` takes its measurements from one of the three virtual backends or, read-only, from the network itself
+  (`live`). The measurement data model and the CSV schema are shared by all backends, and the ping and traceroute
+  commands with their parsers are the same everywhere; packet trains and deep probes run between the two ends of a
+  link and need a probe endpoint there. Further steps are on the [roadmap](../ROADMAP.md): the LXD backend on hardware,
   interconnected with a physical network through the EMS uplink (0.2); passive OSPF listening and reading NQA / IP SLA
   results over SNMP (0.3); a field deployment on a production edge network (1.0).
 - Accuracy and robustness figures come from the simulation backend on the demo topology; the `netns` backend is
-  validated by smoke tests; for the `lxd` backend the generated commands are verified (dry run) and have not yet
-  been run on hardware.
+  validated by smoke tests; the `live` backend is validated black-box on the `netns` real stack, not yet on physical
+  devices; for the `lxd` backend the generated commands are verified (dry run) and have not yet been run on hardware.
 - A 72-hour real-time run of `serve` is planned; the 72-hour figure in the self-test is simulated time. Kylin OS and
   openEuler support is planned.
 - Light probes do not detect one-way loss below about 3% or bandwidth still above about 70% of the baseline. With

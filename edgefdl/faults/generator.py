@@ -61,10 +61,18 @@ def fault_space(topo: Topology, per_type: int = 3, seed: int = 0) -> List[Fault]
 
 
 def learn_baseline(backend, rounds: int = 40, deep_reps: int = 3) -> Baseline:
-    backend.clear()
-    rr = [backend.measure_round(i, transient=[]) if backend.name == "sim" else backend.measure_round(i)
-          for i in range(rounds)]
-    deeps = [{lid: backend.deep_probe(lid) for lid in backend.topo.link_ids()} for _ in range(deep_reps)]
+    """只读后端没有可清除的故障；其基线学习按测量周期定速（pace_s），不背靠背探测现网。
+    不能精测的链路不测，精测基线取拓扑标称值（Baseline.fit）。"""
+    if not backend.read_only:
+        backend.clear()
+    rr = []
+    for i in range(rounds):
+        t0 = time.monotonic()
+        rr.append(backend.measure_round(i, transient=[]) if backend.name == "sim" else backend.measure_round(i))
+        if backend.pace_s and i < rounds - 1:
+            time.sleep(max(0.0, backend.pace_s - (time.monotonic() - t0)))
+    lids = [lid for lid in backend.topo.link_ids() if backend.can_probe(lid)]
+    deeps = [{lid: backend.deep_probe(lid) for lid in lids} for _ in range(deep_reps)]
     return Baseline.fit(backend.topo, rr, deeps)
 
 

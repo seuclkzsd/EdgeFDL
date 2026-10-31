@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 IMG=${EDGEFDL_LAB_IMAGE:-edgefdl-lab:latest}
 RUN=(docker run --rm --privileged --network none -v "$PWD":/work -w /work
      -e PYTHONPATH=/work -e NO_PROXY='*' -e no_proxy='*')
+[ -z "${EDGEFDL_LAB_NAME:-}" ] || RUN+=(--name "$EDGEFDL_LAB_NAME")     # 给容器命名，便于并行跑时识别
 case "${1:-shell}" in
   build) NO_PROXY='*' no_proxy='*' docker build --network host \
            --build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" -t "$IMG" scripts/lab ;;

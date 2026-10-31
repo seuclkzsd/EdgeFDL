@@ -81,6 +81,14 @@ def link_evidence(f, ftype: str, d=None, lid=None) -> bool:
     return True
 
 
+def path_evidence(f, ftype: str, d=None, lid=None) -> bool:
+    """没有 LSDB 时的直接证据：路由漂移看实测路径是否离开该链路（或推断出的开销，见 vnet.live.StateInference），
+    其余类型同 link_evidence。"""
+    if ftype == "route_drift":
+        return float(f[LI["paths_lost"]]) > 0.05 or abs(float(f[LI["cost_ratio"]])) > 0.05
+    return link_evidence(f, ftype, d, lid)
+
+
 def poisson_sf(k: float, lam: float) -> float:
     """P(X >= k)，X ~ Poisson(lam)：丢包计数的显著性（各目标基线丢包率很小，按泊松近似）。"""
     if k <= 0:

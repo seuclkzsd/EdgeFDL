@@ -132,22 +132,31 @@ thread; Syslog is a non-blocking UDP send.
 **Integrations.** The dashboard (`/`), REST endpoints (`/api/*`), Prometheus metrics (`/metrics`), CSV export,
 Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api.md). Demo fault injection
 (`POST /api/inject`, `/api/clear`) is accepted only on the virtual backends and can be disabled with
-`serve --no-inject`.
+`serve --no-inject`; on the `live` backend it is always refused.
+
+**The same loop on a real network.** The `live` backend feeds this loop from the EMS itself: pings and traceroutes to
+the topology's addresses, read-only, nothing created or changed. Measurements it does not have (LSDB, packet trains,
+deep probes, NQA targets) are simply absent from `RoundResult`, and the engine asks the backend what it can measure
+(`can_lsdb`, `can_bw`, `can_probe`): deep-probe actions of links without probe endpoints and bandwidth conclusions of
+links without packet trains are masked, and route-drift evidence falls back to the measured paths. What this costs,
+measured, and how `--infer-state` recovers link and cost state from the data plane are in
+[Connecting to a real network](deployment.md#connecting-to-a-real-network).
 
 ## Module map
 
 | Module | Responsibility |
 |---|---|
 | [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.2`) and the `python -m edgefdl` entry point. |
-| [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
+| [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `preflight`, `gen`, `train`, `eval`, `bench`, `robust`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
 | [`edgefdl/topology.py`](../edgefdl/topology.py) | Topology data model (`Node`, `Link`, `Target`), validation of names, IDs and addresses, automatic /30 and loopback planning, deterministic OSPF shortest paths, forward and return route of every target, monitoring targets and coverage planning. |
 | [`edgefdl/intake/form.py`](../edgefdl/intake/form.py) | Requirements form (YAML) plus device configurations and LLDP → topology; form template. |
 | [`edgefdl/intake/extract.py`](../edgefdl/intake/extract.py) | Parses Huawei VRP, H3C Comware and Cisco IOS configuration text (hostname, interfaces, addresses, OSPF cost, speed), pairs interfaces into links by shared subnet, reads LLDP CSV, optional extraction from PNG / JPEG images via an OpenAI-compatible multimodal endpoint. |
-| [`edgefdl/vnet/base.py`](../edgefdl/vnet/base.py) | `Backend` interface (`up`, `down`, `inject`, `clear`, `measure_round`, `deep_probe`, `status`) and the backend factory. |
+| [`edgefdl/vnet/base.py`](../edgefdl/vnet/base.py) | `Backend` interface (`up`, `down`, `inject`, `clear`, `measure_round`, `deep_probe`, `status`, and the capability queries `can_lsdb`, `can_bw`, `can_probe`) and the backend factory. |
 | [`edgefdl/vnet/sim.py`](../edgefdl/vnet/sim.py) | Analytic simulator: OSPF routes, per-packet random delay, jitter and loss, packet-train estimates with multiplicative noise, LSDB view, transient interference, optional ICMP rate limiting. |
 | [`edgefdl/vnet/stack.py`](../edgefdl/vnet/stack.py) | Shared real-kernel backend for `netns` and `lxd`: L3 configuration, FRR or static routing, fault commands, concurrent ping / traceroute / packet-train / LSDB measurement rounds, deep probes, convergence wait, LSDB parsing. |
 | [`edgefdl/vnet/netns.py`](../edgefdl/vnet/netns.py) | Linux network-namespace backend: one namespace per device, one veth pair per link, one FRR instance per router. |
 | [`edgefdl/vnet/lxd.py`](../edgefdl/vnet/lxd.py) | LXD backend: one container per device, one bridge per link, optional macvlan / bridged uplink to a physical port; `python -m edgefdl.vnet.lxd` prints the full command sequence (dry run), `--stage-dir` keeps the generated FRR files. |
+| [`edgefdl/vnet/live.py`](../edgefdl/vnet/live.py) | Read-only backend for a real routed network: ping and traceroute from the EMS with a rotating traceroute budget, optional `--lsdb-cmd` and probe endpoints, a command allow-list that refuses everything but probes, refusal of injection, `preflight`, and `StateInference` (link and cost state from the data plane). |
 | [`edgefdl/vnet/frr.py`](../edgefdl/vnet/frr.py) | FRR configuration generator: single-area OSPF, point-to-point router links, hello 1 s / dead 4 s, host-facing interfaces and loopbacks passive. |
 | [`edgefdl/faults/model.py`](../edgefdl/faults/model.py) | Fault types, value ranges, labels, alarm categories and fault-space enumeration. |
 | [`edgefdl/faults/injector.py`](../edgefdl/faults/injector.py) | Translates a fault into apply / revert commands (`tc` netem + tbf, `ip link` / `ip addr`, `vtysh` OSPF cost); also the baseline queue configuration. |
@@ -172,10 +181,12 @@ Outside the package: [`scripts/lab.sh`](../scripts/lab.sh) and [`scripts/lab/Doc
 build a privileged Debian 12 container with FRR, iperf3, traceroute and iproute2;
 [`scripts/netns_smoke.py`](../scripts/netns_smoke.py) runs the real-protocol-stack smoke test in it;
 [`scripts/sim_vs_stack.py`](../scripts/sim_vs_stack.py) compares the baseline RTT of every target on the real
-stack with the simulator; [`scripts/compare_robust.py`](../scripts/compare_robust.py) compares multi-alarm and
+stack with the simulator; [`scripts/live_blackbox.py`](../scripts/live_blackbox.py) validates the `live` backend
+black-box on the real stack; [`scripts/live_missing.py`](../scripts/live_missing.py) measures on the simulator what each
+missing measurement costs; [`scripts/compare_robust.py`](../scripts/compare_robust.py) compares multi-alarm and
 single-alarm robustness runs seed by seed; [`tests/`](../tests/) holds the unit tests
 ([`test_core.py`](../tests/test_core.py), [`test_engine.py`](../tests/test_engine.py),
-[`test_infra.py`](../tests/test_infra.py));
+[`test_infra.py`](../tests/test_infra.py), [`test_live.py`](../tests/test_live.py));
 [`tools/dev/spdx.py`](../tools/dev/spdx.py) checks license headers; [`configs/`](../configs/) holds the demo
 topology and a sample intake form with device configurations.
 
@@ -265,7 +276,7 @@ configuration, translates faults into commands, generates the monitoring targets
 provides the routing matrices that the features use, drives the remediation rehearsal and lays out the
 dashboard. Any two components that talk about "link L6" or "the path to acc3" agree by construction.
 
-**Interchangeable backends.** `sim`, `netns` and `lxd` implement one interface and return identical
+**Interchangeable backends.** `sim`, `netns`, `lxd` and `live` implement one interface and return identical
 `RoundResult` / `DeepProbe` records. Fault semantics match: the simulator's per-direction delay, normal-
 distributed jitter, loss and rate limit mirror the `tc` netem + tbf configuration that the real backends apply,
 and link down withdraws the subnet in both. The fast simulator produces the full training set; the real stacks
@@ -284,6 +295,7 @@ predictable. In the 72-hour-equivalent self-test (51,840 simulated rounds with t
 recorded 0 errors (see [results.md](results.md)).
 
 **Read-only towards devices.** On a production network EdgeFDL only sends probes and reads state. Fault
-injection exists for the virtual backends and is refused by the API on any other backend. Remediation is
+injection exists for the virtual backends and is refused by the API on any other backend; the `live` backend also
+refuses it itself and executes nothing but probe commands, through an allow-list in `LiveExec`. Remediation is
 advisory: the alarm lists vendor-specific commands and the rehearsed effect of a temporary measure, and an
 operator decides whether to apply it.
