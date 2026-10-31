@@ -58,7 +58,8 @@ per-target thresholds name no link and are left out.
   takes 270 s, voting about 150 s and grouping 118 to 134 s. Shorter regression windows do not close the gap at the
   same quality: the best validation F1 is 0.890 with 10 false alarms per day for a 2-minute window and 0.749 with 34 for
   a 1-minute window, against 0.970 with none for 5 minutes (`window_tradeoff` in `compare.json`). Default thresholds are fast but noisy: grouping + EMS rules
-  takes 33.1 s at 89.9% correct and 2,226 false alarms. The EMS rules beat EdgeFDL on what they cover: link down and
+  takes 33.1 s at 89.9% correct and 2,226 false alarms. SCFS and SCORE + EMS rules match EdgeFDL's speed (40.0 s) only at 80.2%
+  correct. The EMS rules beat EdgeFDL on what they cover: link down and
   route drift in 10 s against 30 s, bandwidth in 40 s against 57 s.
 - **False alarms are the price.** EdgeFDL raises 53 in 30 simulated days, 48 of them under 15 s transients. Regression +
   EMS rules raises none at the selected setting and 21 at λ = 0.01, all under 15 s transients.
