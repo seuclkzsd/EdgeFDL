@@ -7,14 +7,24 @@
 # 容器带 --rm，只有仓库目录（/work）里的文件会保留：输出请写到仓库内，如
 #   scripts/lab.sh run python3 -m edgefdl baseline --backend netns -o runs/lab/baseline.json
 # run 结束后把容器（root）在仓库里新建的文件交还给宿主机当前用户。
+# 可选环境变量：EDGEFDL_LAB_IMAGE 镜像；EDGEFDL_LAB_NAME 容器名；EDGEFDL_LAB_CPUSET 绑定的 CPU（如 24-27）；
+# 构建时 EDGEFDL_LAB_TORCH=1 另装 CPU 版 PyTorch（scripts/realstack_eval.py 需要，默认镜像不含），
+# EDGEFDL_PIP_INDEX、EDGEFDL_TORCH_WHEELS 换 pip 源与 PyTorch wheel 源。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 IMG=${EDGEFDL_LAB_IMAGE:-edgefdl-lab:latest}
 RUN=(docker run --rm --privileged --network none -v "$PWD":/work -w /work
-     -e PYTHONPATH=/work -e NO_PROXY='*' -e no_proxy='*')
+     -e PYTHONPATH=/work -e NO_PROXY='*' -e no_proxy='*' -e OMP_NUM_THREADS=1)
+[ -z "${EDGEFDL_LAB_NAME:-}" ] || RUN+=(--name "$EDGEFDL_LAB_NAME")
+[ -z "${EDGEFDL_LAB_CPUSET:-}" ] || RUN+=(--cpuset-cpus "$EDGEFDL_LAB_CPUSET")
+BUILD=(--build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}")
+if [ "${EDGEFDL_LAB_TORCH:-0}" = 1 ]; then
+  BUILD+=(--build-arg TORCH=1)
+  [ -z "${EDGEFDL_PIP_INDEX:-}" ] || BUILD+=(--build-arg PIP_INDEX="$EDGEFDL_PIP_INDEX")
+  [ -z "${EDGEFDL_TORCH_WHEELS:-}" ] || BUILD+=(--build-arg TORCH_WHEELS="$EDGEFDL_TORCH_WHEELS")
+fi
 case "${1:-shell}" in
-  build) NO_PROXY='*' no_proxy='*' docker build --network host \
-           --build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" -t "$IMG" scripts/lab ;;
+  build) NO_PROXY='*' no_proxy='*' docker build --network host "${BUILD[@]}" -t "$IMG" scripts/lab ;;
   shell) "${RUN[@]}" -it "$IMG" bash ;;
   smoke) shift; "${RUN[@]}" "$IMG" python3 scripts/netns_smoke.py "$@" ;;
   run)   shift
