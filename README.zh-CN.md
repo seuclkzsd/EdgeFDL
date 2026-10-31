@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/seuclkzsd/EdgeFDL)](https://github.com/seuclkzsd/EdgeFDL/releases)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue.svg)](pyproject.toml)
 
-[文档（英文）](docs/index.md) · [演示视频（中文配音，6 分 40 秒）](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [版本发布](https://github.com/seuclkzsd/EdgeFDL/releases) · [English](README.md)
+[文档（英文）](docs/index.md) · [演示视频（中文配音，6 分 41 秒）](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [版本发布](https://github.com/seuclkzsd/EdgeFDL/releases) · [English](README.md)
 
 > 本文是 [README.md](README.md) 的中文译本，**以英文版为准**。其余文档以英文撰写。
 

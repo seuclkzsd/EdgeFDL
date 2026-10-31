@@ -8,7 +8,7 @@ read-only towards the devices.**
 [![Release](https://img.shields.io/github/v/release/seuclkzsd/EdgeFDL)](https://github.com/seuclkzsd/EdgeFDL/releases)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.8-blue.svg)](pyproject.toml)
 
-[Documentation](docs/index.md) · [Demo video (Chinese narration, 6 min 40 s)](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
+[Documentation](docs/index.md) · [Demo video (Chinese narration, 6 min 41 s)](https://github.com/seuclkzsd/EdgeFDL/releases/latest) · [Releases](https://github.com/seuclkzsd/EdgeFDL/releases) · [中文](README.zh-CN.md)
 
 ![Left: on the demo topology a delay on link L1 makes 16 of the 36 monitored targets cross their thresholds, while EdgeFDL raises one alarm naming L1 and the fault type. Right: type + location accuracy on the independent test set (link down 100.00%, performance degradation 98.73%, route drift 100.00%) against the targets, and three self-test figures](docs/images/hero.png)
 

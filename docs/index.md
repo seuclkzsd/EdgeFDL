@@ -43,7 +43,7 @@ of the operators the project was built for; the pages translate the labels you w
 | [Comparison](comparison.md) | Capability-level comparison with general monitoring (Zabbix, Prometheus, Nightingale), network management and alarm correlation (LibreNMS, OpenNMS ALEC), active measurement (perfSONAR, SmokePing), configuration analysis (Batfish) and research approaches |
 | [`results/README.md`](../results/README.md) | What each file in `results/` contains and which command produced it |
 
-The demo video (Chinese narration, 6 min 40 s) is attached to the
+The demo video (Chinese narration, 6 min 41 s) is attached to the
 [latest release](https://github.com/seuclkzsd/EdgeFDL/releases/latest) as `EdgeFDL-demo-zh.mp4`. Dashboard
 screenshots are in [`docs/media/`](media/).
 

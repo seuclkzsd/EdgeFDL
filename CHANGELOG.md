@@ -118,7 +118,7 @@ robustness suite reproduces `results/robust.json` apart from its run time.
 - [tests/test_engine.py](tests/test_engine.py) (sinks, JSON encoding, API validation and cross-site checks,
   rehearsal) and [tests/test_infra.py](tests/test_infra.py) (topology validation, dry runs, CSV logs,
   reproducibility, bundle loading, intake); the suite has 71 tests.
-- The demo video `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 40 s) is attached to the
+- The demo video `EdgeFDL-demo-zh.mp4` (Chinese narration, 6 min 41 s) is attached to the
   [v0.1.1 release](https://github.com/seuclkzsd/EdgeFDL/releases/tag/v0.1.1).
 
 ## [0.1.0] - 2026-10-30
