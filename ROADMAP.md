@@ -7,7 +7,7 @@ instead of from user complaints and hop-by-hop logins. The table below lists the
 state the reason and are moved or dropped. To discuss an item or volunteer for it, open a feature request that names
 the item.
 
-## What 0.1 provides
+## What 0.2 provides
 
 - Requirements intake from a form, device configurations and LLDP tables, with an optional local multimodal model
   for topology images; a topology model with IP planning, OSPF shortest paths and coverage planning that adds
@@ -17,12 +17,14 @@ the item.
 - Training per network without production fault data: enumeration of the fault space, trigger-aligned and
   domain-randomized samples, and a DDQN agent with a deep-probe action and a link-shared encoder, delivered as a
   single-file model bundle.
-- Online operation on the EMS, measuring the equivalent virtual network through any of the three backends: 5 s light
-  measurement rounds, k-of-n detection, diagnosis, confirmation,
-  one alarm per fault with evidence and rehearsed remediation advice, device-down aggregation, concurrent alarms,
-  adaptive baseline, per-alarm recovery.
+- Online operation on the EMS, measuring the equivalent virtual network through any of the three backends or, read-only,
+  a real routed network through the `live` backend: 5 s light measurement rounds, k-of-n detection, diagnosis,
+  confirmation, one alarm per fault with evidence and rehearsed remediation advice, device-down aggregation, concurrent
+  alarms, adaptive baseline, per-alarm recovery.
 - Integration through a Web dashboard, a REST API, Syslog (RFC 5424), Webhook (JSON), Prometheus `/metrics` and CSV
   logs with schema files.
+- A measured comparison with the methods behind existing tools, accuracy measured on the real protocol stack, a
+  one-command container, and a recorded dashboard replay that runs in a browser.
 
 Measured results and their conditions are in [docs/results.md](docs/results.md) and [results/](results/README.md).
 
@@ -30,9 +32,10 @@ Measured results and their conditions are in [docs/results.md](docs/results.md) 
 
 | Quarter | Version | Item | Measurable criterion |
 |---|---|---|---|
-| 2026Q4 | 0.2 | `lxd` backend on hardware, interconnected with a physical network through the EMS uplink | On a physical host, `vnet up --backend lxd` builds the demo topology; the 26 checks of the real-stack smoke test pass on the `lxd` backend; probes reach at least one device of a physical network through the bridged uplink; logs of the run are published in `results/` |
-| 2026Q4 | 0.2 | 72-hour real-time stress test of `serve` on the real protocol stack | 72 h of wall-clock operation on the `netns` backend with background noise: 0 engine errors; false alarms, inference latency, probe bandwidth and CPU and memory use reported against the targets (single-round inference ≤ 100 ms, measurement bandwidth < 5%, server resources ≤ 20%); `measure_log.csv` and `alarm_log.csv` published with the release |
-| 2026Q4 | 0.2 | Sample generation on the real stack and fine-tuning, including heavy loss (≥ 30%) with OSPF adjacency flaps | A test set generated on the `netns` backend covering all six fault types; the fine-tuned model reaches type + location accuracy ≥ 98% for link down, ≥ 95% for performance degradation and ≥ 95% for route drift on it, and keeps these levels on the simulation test set |
+| 2026Q4 | 0.2.x | `live` backend on physical routers | On a network of at least three physical routers, `preflight` passes, and scripted faults on at least three links are alarmed with the right type and link with `--lsdb-cmd`; logs of the run are published in `results/` |
+| 2026Q4 | 0.2.x | `lxd` backend on hardware, interconnected with a physical network through the EMS uplink | On a physical host, `vnet up --backend lxd` builds the demo topology; the 26 checks of the real-stack smoke test pass on the `lxd` backend; probes reach at least one device of a physical network through the bridged uplink; logs of the run are published in `results/` |
+| 2026Q4 | 0.2.x | 72-hour real-time stress test of `serve` on the real protocol stack | 72 h of wall-clock operation on the `netns` backend with background noise: 0 engine errors; false alarms, inference latency, probe bandwidth and CPU and memory use reported against the targets (single-round inference ≤ 100 ms, measurement bandwidth < 5%, server resources ≤ 20%); `measure_log.csv` and `alarm_log.csv` published with the release |
+| 2026Q4 | 0.2.x | Sample generation on the real stack and fine-tuning, including heavy loss (≥ 30%) with OSPF adjacency flaps | A test set generated on the `netns` backend covering all six fault types; the fine-tuned model reaches type + location accuracy ≥ 98% for link down, ≥ 95% for performance degradation and ≥ 95% for route drift on it, and keeps these levels on the simulation test set |
 | 2027Q1 | 0.3 | Passive OSPF listening and readers for SNMP and device-native NQA / IP SLA results | Adjacency and cost changes are detected from a passive OSPF adjacency without `vtysh` access; NQA / IP SLA results read over SNMP enter the features; both are covered by tests on recorded protocol traces |
 | 2027Q1 | 0.3 | Active probing for light loss | In the fault-size sweep of `python -m edgefdl robust`, 2% one-way loss is detected and located (type + link) in at least 90% of samples, with no additional false alarms in the 24 h runs and probe traffic below 1% of the narrowest link |
 | 2027Q1 | 0.3 | Kylin OS and openEuler adaptation | Unit tests and the 26 real-stack smoke checks pass on Kylin OS V10 and openEuler 24.03 LTS, recorded in CI or in a dated validation report |
@@ -58,4 +61,4 @@ Release cadence: at least one minor or patch release per month while there are u
 
 | Quarter | Done | Not done, and why | Median first response to issues | Median first review of pull requests |
 |---|---|---|---|---|
-| 2026Q4 | — | — | — | — |
+| 2026Q4 | Measured comparison, accuracy on the real protocol stack, `live` backend validated black-box, container image, recorded replay (0.2.0) | In progress: see the plan above | — | — |

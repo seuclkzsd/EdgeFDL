@@ -26,7 +26,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ..agent.features import LIGHT_FEATURES, FeatureEncoder, deep_evidence, link_evidence, poisson_sf
+from ..agent.features import (LIGHT_FEATURES, FeatureEncoder, deep_evidence, link_evidence, path_evidence,
+                              poisson_sf)
 from ..agent.infer import Policy
 from ..agent.knowledge import advise, advise_node
 from ..faults.model import CATEGORY
@@ -70,6 +71,9 @@ class Engine:
                  node_back: int = 18, rot_gate: bool = True, relearn_mask: bool = True):
         self.topo, self.backend, self.policy, self.plan = topo, backend, policy, plan
         self.enc: FeatureEncoder = policy.enc
+        self.noprobe = [l for l in self.enc.lids if not backend.can_probe(l)]   # 真实网络上可能缺的测量
+        policy.set_capabilities(self.noprobe, [l for l in self.enc.lids if not backend.can_bw(l)])
+        self.ev = link_evidence if backend.can_lsdb() else path_evidence        # 直接证据判据（gate）
         self.det = Detector(self.enc, window=plan.window)
         self.window: deque = deque(maxlen=plan.window)
         os.makedirs(log_dir, exist_ok=True)
@@ -461,11 +465,13 @@ class Engine:
         """恢复复核精测（锁外执行）：精测与告警类型矛盾即恢复该条，支持则重新计数。"""
         with self.lock:
             a = next((x for x in self.alarms if x["alarm_id"] == aid), None)
-            if a is None:
+            if a is None or lid in self.noprobe:      # 该链路不能精测：留给全网恢复（_recover）处理
                 return
             self._trk[aid]["probed"] = self.round
             self.extra_probes += 1
         dp = self._probe(lid)
+        if not dp.sent:                           # 精测没能运行（live 的端点故障）：无从判断，告警保持
+            return
         d = self.enc.deep(dp)
         if a["fault_type"] == "loss":             # 精测丢包按链路两端设备的背景丢包率放宽（ICMP 限速同样作用于精测）
             ends = [ti for ti, t in enumerate(self.enc.targets) if t.link == lid]   # 精测应答来自链路两端设备
@@ -541,7 +547,7 @@ class Engine:
             return self._diagnose_single(st)
         if self.alarms:
             return self._diagnose_more(st)
-        res = self.policy.diagnose(list(self.window), probe_fn=self._probe, gate=True)
+        res = self.policy.diagnose(list(self.window), probe_fn=self._probe, gate=self.ev)
         if res["type"] == "link_down":
             res = self._node_down(res)
         with self.lock:
@@ -575,7 +581,7 @@ class Engine:
     def _diagnose_more(self, st: Dict):
         """已有告警时：原始基线研判只刷新同结论告警的置信度（及链路中断细化为设备宕机）；新告警只来自残差研判。"""
         window = list(self.window)
-        res = self.policy.diagnose(window, gate=True)     # 只作刷新，不精测（精测留给残差研判）
+        res = self.policy.diagnose(window, gate=self.ev)  # 只作刷新，不精测（精测留给残差研判）
         if res["type"] == "link_down":
             res = self._node_down(res)
         with self.lock:
@@ -650,8 +656,8 @@ class Engine:
                 if d is not None and d[0] > 0.5 and deep_evidence(d, "loss"):
                     return True
                 v = self.enc.loss_excess(window, lid, ref)
-                return link_evidence(f, ftype, d) if v is None else v
-            return link_evidence(f, ftype, d)
+                return self.ev(f, ftype, d) if v is None else v
+            return self.ev(f, ftype, d)
         return ok
 
     def _upgrade_node(self, res: Dict, st: Dict) -> bool:
@@ -909,6 +915,7 @@ class Engine:
             al = self.active_list()
             return dict(
                 round=self.round, uptime_s=round(time.time() - self.started), backend=self.backend.name,
+                read_only=bool(self.backend.read_only), measurement=self.backend.health(),
                 model=self.model_version, interval_s=self.plan.interval_s,
                 detector=dict(active=self.det.active, reason=self.det.last_reason),
                 active_alarm=al[0] if al else None, active_alarms=al, multi_alarm=self.multi,

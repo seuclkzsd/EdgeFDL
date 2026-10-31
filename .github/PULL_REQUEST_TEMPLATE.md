@@ -6,11 +6,12 @@
 
 The checks are those of [CONTRIBUTING.md, "Checks before a pull request"](https://github.com/seuclkzsd/EdgeFDL/blob/main/CONTRIBUTING.md#checks-before-a-pull-request) and CI.
 
-<!-- Tick the checks you actually ran and paste the end of their output (for example "Ran 72 tests ... OK"). -->
+<!-- Tick the checks you actually ran and paste the end of their output (for example "Ran 220 tests ... OK"). -->
 
 - [ ] `python -m unittest discover -s tests`
 - [ ] `python tools/dev/spdx.py`
 - [ ] `tools/dev/ci.sh quick`
+- [ ] `tools/dev/ci.sh image` (when changing `Dockerfile`, `compose.yaml`, `.dockerignore`, `requirements-lock.txt` or the `serve` command)
 - [ ] `scripts/lab.sh smoke` (when changing `edgefdl/vnet/`, `edgefdl/faults/injector.py` or `edgefdl/measure/probes.py`)
 - [ ] LXD dry run reviewed (when changing `edgefdl/vnet/lxd.py` or `edgefdl/vnet/stack.py`)
 
@@ -36,5 +37,5 @@ The checks are those of [CONTRIBUTING.md, "Checks before a pull request"](https:
 - [ ] No change to CLI options, REST endpoints or their JSON fields, Prometheus metrics, CSV log columns, topology or intake formats, or the model bundle format
 - [ ] One of these interfaces changed, and docs/api.md and the other affected documents are updated
 - [ ] User-visible changes are recorded in the `[Unreleased]` section of `CHANGELOG.md`
-- [ ] Topologies, configurations and logs in this pull request are synthetic or anonymized; new dependencies are recorded in `requirements.txt`, `pyproject.toml` and `NOTICE`
+- [ ] Topologies, configurations and logs in this pull request are synthetic or anonymized; new dependencies are recorded in `requirements.txt`, `pyproject.toml`, `requirements-lock.txt`, `NOTICE` and `docs/dependencies.md`
 - [ ] If AI tools were used substantially, this is mentioned above, and I have reviewed and tested every line myself

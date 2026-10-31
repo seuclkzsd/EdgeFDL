@@ -98,7 +98,7 @@ button.danger{border-color:var(--bad);color:var(--bad)}
         <svg class="spark" id="spark" viewBox="0 0 400 110" preserveAspectRatio="none"></svg>
         <div class="meta" id="sel-meta"></div>
       </div>
-      <div class="card">
+      <div class="card" id="inj-card">
         <h2>故障注入（演示 / 测试）</h2>
         <div class="ctl">
           <select id="inj-link"></select>
@@ -184,6 +184,7 @@ async function init(){
     $("#inj-msg").textContent = j.ok?`已注入：${j.label}`:`失败：${j.error}`;
   };
   $("#btn-clr").onclick=async()=>{const j=await post("/api/clear",{});$("#inj-msg").textContent=j.ok?"已清除全部故障":`失败：${j.error}`;};
+  if(TOPO.inject_enabled===false){$("#inj-card").style.display="none";}   // 只读（live）或 --no-inject：不提供注入
   tick(); setInterval(tick, 1000); setInterval(series, 2000);
 }
 
@@ -192,7 +193,7 @@ function select(id){SEL=id; document.querySelectorAll(".link").forEach(e=>e.clas
 async function tick(){
   let s; try{ s = await (await fetch("/api/status")).json(); }catch(e){ $("#sub").textContent="与后台连接中断，重试中…"; return; }
   LAST = s;
-  $("#sub").textContent = `拓扑 ${TOPO.name} · ${TOPO.nodes.length} 设备 / ${TOPO.links.length} 链路 · 后端 ${s.backend} · 模型 ${s.model||"-"} · 周期 ${s.interval_s}s`;
+  $("#sub").textContent = `拓扑 ${TOPO.name} · ${TOPO.nodes.length} 设备 / ${TOPO.links.length} 链路 · 后端 ${s.backend}${s.read_only?"（只读）":""} · 模型 ${s.model||"-"} · 周期 ${s.interval_s}s`;
   $("#k-up b").textContent = fmtDur(s.uptime_s);
   $("#k-round b").textContent = s.round;
   const inf = s.infer && s.infer.p99_ms; $("#k-inf b").textContent = inf!=null? inf.toFixed(2)+" ms":"-";

@@ -15,6 +15,17 @@ runs against a simulated copy of the 12-device demo network.
 The commands below run from the repository root. The terminal output, CLI help and dashboard are in Chinese; this
 page translates what you will see.
 
+**With Docker** the first two steps are one command. It builds the image on the first run and needs no Python on the
+machine; continue at [section 3](#3-inject-a-fault-and-read-the-alarm), and stop with Ctrl-C:
+
+```bash
+git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
+docker compose up
+```
+
+Open <http://127.0.0.1:8460>; the address `0.0.0.0:8460` in the log is the one inside the container. The image, its
+settings and mirrors are described in [Deployment](deployment.md#container-image).
+
 ## 1. Install
 
 ```bash
@@ -22,7 +33,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python3 -m venv .venv && . .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu    # CPU-only PyTorch (a much smaller download)
 pip install -r requirements.txt                                       # numpy, pyyaml, torch, psutil
-python -m edgefdl --version                                           # edgefdl 0.1.2
+python -m edgefdl --version                                           # edgefdl 0.2.0
 ```
 
 - The CPU-only PyTorch line is optional but recommended: EdgeFDL never uses a GPU, and the default PyTorch wheel for
@@ -31,7 +42,7 @@ python -m edgefdl --version                                           # edgefdl 
 - `pip install -e .` additionally installs an `edgefdl` command (`edgefdl --version`). Keep working from the
   checkout: the demo topology (`configs/`) and the released model (`results/`) live in the repository, not in the
   Python package.
-- Check the installation with the unit tests (72 tests, about 20 s):
+- Check the installation with the unit tests (220 tests, about 30 s):
 
   ```bash
   python -m unittest discover -s tests
@@ -84,7 +95,7 @@ the simulated network only.
 | Loss (丢包劣化) | loss rate as a fraction, 0–1 | 0.1 | 0.05–0.9 |
 | Jitter (抖动劣化) | jitter in ms | 15 | 5–50 ms |
 | Bandwidth (带宽劣化) | remaining fraction of the link bandwidth, 0–1 | 0.2 | 0.05–0.5 |
-| Route drift (路由漂移) | multiplier of the link's OSPF cost | 10 | ×0.1, 0.3, 3, 10, 30; router–router links only, and the change must move a monitored path |
+| Route drift (路由漂移) | multiplier of the link's OSPF cost | 10 | ×0.1, 0.3, 3, 10, 30; router–router links only (other links are refused with HTTP 400), and the change must move a monitored path |
 
 Watch the event stream. A persistent fault is first reported as suspected, for example
 `疑似 L6 链路中断，等待下一轮复核` ("suspected: L6 link down, waiting for the next check"), and becomes an alarm after a
@@ -231,9 +242,10 @@ scripts/lab.sh run python3 -m edgefdl baseline --backend netns -o runs/lab/basel
 The container mounts the repository at `/work`, runs with `--network none` and is removed when the command ends, so
 write outputs into the repository (as `runs/lab/` above); `lab.sh run` warns about output paths under `/tmp`. Files
 that a `run` command creates in the repository are handed back to your user afterwards (files created in `shell`
-stay owned by root). The image carries the network tools but not PyTorch, so it runs the backend-level commands
-(`baseline`, `gen`, `vnet`, the smoke test); training and `serve` run on the host. `EDGEFDL_LAB_IMAGE` overrides the
-image name.
+stay owned by root). The image `edgefdl-lab:latest` carries the network tools but not PyTorch, so it runs the
+backend-level commands (`baseline`, `gen`, `vnet`, the smoke test). `scripts/lab.sh build-torch` builds
+`edgefdl-lab-torch:latest`, the same image with the CPU build of PyTorch; set
+`EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest` to run `serve` and the real-stack evaluation in the container as well.
 
 The third backend, `lxd`, runs every device in its own LXD system container. Print its complete command sequence
 (node image, bridges, containers, FRR configuration, an uplink to a physical port, a fault injection and teardown)
@@ -252,22 +264,23 @@ The FRR configuration files are generated in a temporary directory that is remov
 
 | Symptom | Cause and fix |
 |---|---|
-| `OSError: [Errno 98] Address already in use` when starting `serve` | Port 8460 is taken, perhaps by an earlier `serve`. Stop it or pass `--port 8470` |
+| `edgefdl: 无法监听 127.0.0.1:8460：[Errno 98] Address already in use…` when starting `serve` | Port 8460 is taken, perhaps by an earlier `serve`. Nothing was measured or written. Stop it or pass `--port 8470` |
+| `edgefdl: 命令失败(1): ip netns add efl-core`, `mkdir /run/netns failed: Permission denied` and a line about `scripts/lab.sh` | The `netns` backend needs root. Without root, run it in the lab container ([section 6](#6-real-protocol-stack-in-docker)) |
 | `curl` to `127.0.0.1` returns nothing or an error page from a proxy | `http_proxy` / `https_proxy` are set and curl sends local requests to the proxy. Use `curl --noproxy '*' …` or set `no_proxy=127.0.0.1,localhost` |
 | Webhook receiver gets nothing | The Webhook sink uses Python's `urllib`, which honours `http_proxy` and `no_proxy`. Add the receiver's host to `no_proxy` in the environment of `serve` |
 | `POST /api/inject` returns `{"error": "当前后端不允许注入故障"}` (HTTP 403) | `serve` was started with `--no-inject`, which disables fault injection |
 | A `POST` returns `{"error": "POST 请求须为 Content-Type: application/json"}` (HTTP 415) | Send the JSON body with `-H 'Content-Type: application/json'`, as in [section 3](#3-inject-a-fault-and-read-the-alarm) |
 | A request returns `{"error": "拒绝 Host 为 '…' 的请求：…"}` (HTTP 403) | The server listens on 127.0.0.1 and accepts only requests addressed to `localhost`, `127.0.0.1` or `::1`. Use one of these names (an SSH tunnel to any local port works); a reverse proxy must pass the upstream `Host` (`127.0.0.1:8460`, nginx's default). To serve other hosts directly, start `serve` with `--host <address>` ([Deployment, security](deployment.md#6-security)) |
-| `POST /api/inject` returns HTTP 400, for example `{"error": "loss 的 value 须大于 0 且不超过 1（丢包率），收到 5"}` | The value is outside the accepted range; the ranges and messages are listed in [api.md](api.md#post-apiinject-and-post-apiclear) |
+| `POST /api/inject` returns HTTP 400, for example `{"error": "loss 的 value 须大于 0 且不超过 1（丢包率），收到 5"}` | The value is outside the accepted range, or a route drift names a link to a host or the EMS; the ranges and messages are listed in [api.md](api.md#post-apiinject-and-post-apiclear) |
 | `serve` stops at start with `edgefdl: --sinks 配置有误：Webhook 地址须为以 http:// 或 https:// 开头的完整 URL…` or another `--sinks 配置有误` message | `--sinks` is checked at start: a Webhook needs a complete `http://` or `https://` URL, a Syslog sink a `host` and a port from 1 to 65535, and only the types `webhook` and `syslog` exist ([Deployment, alarm sinks](deployment.md#alarm-sinks)) |
-| No alarm after injecting a fault | The value is below what the light probes detect (one-way loss below about 3%, bandwidth above about 70% of the baseline), or a route drift does not move any monitored path (and route drift applies to router–router links only). Wait longer for bandwidth faults. Use values in the trained ranges of [section 3](#3-inject-a-fault-and-read-the-alarm) |
+| No alarm after injecting a fault | The value is below what the light probes detect (one-way loss below about 3%, bandwidth above about 70% of the baseline), or a route drift does not move any monitored path. Wait longer for bandwidth faults. Use values in the trained ranges of [section 3](#3-inject-a-fault-and-read-the-alarm) |
 | `edgefdl: 找不到默认拓扑 configs/demo_topology.yaml…` | EdgeFDL was installed from the wheel or with `pip install .`, so the default topology is not there: its path follows the installed package, not the current directory. Name a topology file (`--topo`, or the positional argument of `topo`), run `python -m edgefdl` from the checkout, or install with `pip install -e .` |
 | The PyTorch download is very large | The default Linux wheel includes CUDA. Install the CPU build first (section 1) |
 | `pipeline`, `robust` or `gen` uses too many CPUs | Lower `--workers` (sample generation, robustness jobs) and `--threads` (training). Sample sets do not depend on `--workers` |
 | `scripts/lab.sh build` is slow or cannot reach the Debian mirror | Set `EDGEFDL_APT_MIRROR` to a reachable Debian mirror host, for example `EDGEFDL_APT_MIRROR=mirrors.example.org scripts/lab.sh build` |
 | `scripts/lab.sh` reports `permission denied` on the Docker socket | Add your user to the `docker` group (and log in again), or run it as a user who may start privileged containers |
 | `scripts/lab.sh smoke` reports a failed check (`[FAIL] …`) | The real-stack checks depend on packet timing inside the container; a heavily loaded host can delay OSPF convergence or probe packets. Re-run on an idle host; if a check keeps failing, open an issue with the full log (the `[FAIL]` line shows the measured value) |
-| `ModuleNotFoundError: No module named 'torch'` inside the lab container | Expected: the lab image has no PyTorch. Run `serve`, `train`, `eval`, `bench` and `robust` on the host |
+| `ModuleNotFoundError: No module named 'torch'` inside the lab container | The default lab image has no PyTorch. Build the one that has it with `scripts/lab.sh build-torch` and set `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest`, or run the command on the host |
 
 Still stuck? Open an issue with the bug report template and include `python -m edgefdl --version`, the command line and
 its full output.

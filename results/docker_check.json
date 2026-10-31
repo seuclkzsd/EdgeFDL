@@ -1,0 +1,55 @@
+{
+ "test_conditions": {
+  "date": "2026-10-31",
+  "git_commit": "0b3493e8fbca11cf1c9c187fb737b6bbb6dc0725",
+  "machine": "x86_64",
+  "kernel": "5.15.0-139-generic",
+  "docker": "23.0.2",
+  "compose": "2.17.2",
+  "interval_s": 2.0,
+  "backend": "sim",
+  "model": "results/model.pt",
+  "limits": {
+   "cpus": 2,
+   "memory": "2g"
+  }
+ },
+ "image": {
+  "size_bytes": 1023643383,
+  "size_mb": 1023.6,
+  "base": "python:3.12-slim-bookworm@sha256:e697c81897302a4c4333bade000d98038fbb21eb064f8ee1fd42d02ebcd9d337"
+ },
+ "runtime": {
+  "python": "3.12.16",
+  "torch": "2.9.1+cpu",
+  "numpy": "2.3.3",
+  "pyyaml": "6.0.3",
+  "psutil": "7.2.2"
+ },
+ "checks": {
+  "non-root user": "pass",
+  "not privileged": "pass",
+  "read-only root file system": "pass",
+  "all capabilities dropped": "pass",
+  "no-new-privileges": "pass",
+  "healthy": "pass",
+  "CPU-only PyTorch": "pass",
+  "published on the loopback address only": "pass",
+  "graceful stop (exit code 0, not killed)": "pass"
+ },
+ "end_to_end": {
+  "fault_type": "link_down",
+  "link": "L4",
+  "alarm_after_s": 10.2,
+  "alarm_after_rounds": 6,
+  "cleared_after_s": 6.1,
+  "alarms_total": 1,
+  "metrics_samples": 22
+ },
+ "memory_after_run": "171.2MiB / 2GiB",
+ "stop_seconds": 1,
+ "eval_in_image": {
+  "testset": "test.npz",
+  "byte_identical_to_results_eval_test_json": true
+ }
+}

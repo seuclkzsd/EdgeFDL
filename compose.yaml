@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# 一条命令体验：docker compose up，然后打开 http://127.0.0.1:8460（仿真后端 + 随仓库发布的模型）。
+# 不需要特权：只有仿真后端，不碰宿主机网络，不运行任何外部网络工具。
+# 服务没有认证：端口只发布到宿主机回环地址，要从其他机器访问请放在带认证与 TLS 的反向代理之后。
+# 环境变量（都有默认值）：EDGEFDL_PORT 宿主机端口；EDGEFDL_INTERVAL 测量周期（秒）；
+# EDGEFDL_IMAGE 镜像名；EDGEFDL_REGISTRY、EDGEFDL_PIP_INDEX、EDGEFDL_PIP_FIND_LINKS 构建用的镜像源。
+name: edgefdl
+
+services:
+  edgefdl:
+    image: ${EDGEFDL_IMAGE:-edgefdl:local}
+    build:
+      context: .
+      args:
+        REGISTRY: ${EDGEFDL_REGISTRY:-docker.io/library}
+        PIP_INDEX_URL: ${EDGEFDL_PIP_INDEX:-https://pypi.org/simple}
+        PIP_FIND_LINKS: ${EDGEFDL_PIP_FIND_LINKS:-}
+    command:
+      - serve
+      - --model
+      - results/model.pt
+      - --backend
+      - sim
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8460"
+      - --interval
+      - ${EDGEFDL_INTERVAL:-2}
+      - --log-dir
+      - /data/live
+    ports:
+      - 127.0.0.1:${EDGEFDL_PORT:-8460}:8460
+    volumes:
+      - logs:/data
+    # 最小权限：非 root（镜像内 UID 10001）、根文件系统只读、不留任何 capability、禁止提权
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+
+volumes:
+  logs:

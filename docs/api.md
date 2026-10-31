@@ -4,7 +4,7 @@
 other systems through Syslog, a Webhook, Prometheus metrics and CSV logs. This page is the reference for all of
 them. The examples are real responses, captured from `serve --backend sim --interval 1` with the released model while
 link L6 was down and link L1 had 20 ms of added delay (and, for the device-down examples, while all links of agg2
-were down). Long lists are abridged where marked; alarm IDs and the rehearsal text are shown as release 0.1.2 writes
+were down). Long lists are abridged where marked; alarm IDs and the rehearsal text are shown as release 0.2.0 writes
 them.
 
 - [Conventions](#conventions)
@@ -47,8 +47,9 @@ them.
 - **Time.** In the API, `ts` fields are Unix time in seconds (float). In the CSV logs, `ts` is ISO 8601 local time
   with milliseconds and `epoch` is Unix time.
 - **IDs.** Links are `L1`, `L2`, … as in the topology file. Targets are `<link>.<device>` for an interface address
-  (`L6.agg2`), `lo.<device>` for a loopback and `nqa.<link>` for an NQA / IP SLA probe on a link that no EMS path
-  crosses. Alarm IDs are `A<start time>-<instance>-<sequence>`, for example `A1793319160-3f9c1a-0001`: the Unix time
+  (`L6.agg2`), `lo.<device>` for a loopback and `nqa.<link>` for the probe planned on a link that no EMS path crosses
+  (an NQA / IP SLA probe on the physical network, which EdgeFDL does not read yet; a ping from the end device on the
+  virtual backends, and on `live` if that device is in `--endpoints`). Alarm IDs are `A<start time>-<instance>-<sequence>`, for example `A1793319160-3f9c1a-0001`: the Unix time
   in seconds at which the engine started, 6 random hexadecimal digits drawn at start, and a 4-digit sequence number
   counting the alarms of that run. Runs started in the same second get different instance digits, so IDs stay
   unique across restarts and across engines writing to the same log directory.
@@ -123,7 +124,9 @@ curl -s http://127.0.0.1:8460/api/status
 | Field | Meaning |
 |---|---|
 | `round`, `uptime_s` | Measurement rounds completed, seconds since start |
-| `backend`, `model`, `interval_s` | Backend (`sim`, `netns`, `lxd`), model version from the bundle, measurement interval in seconds |
+| `backend`, `model`, `interval_s` | Backend (`sim`, `netns`, `lxd`, `live`), model version from the bundle, measurement interval in seconds |
+| `read_only` | `true` on the `live` backend |
+| `measurement` | `{}` on the virtual backends. On `live`: `lsdb` and `infer_state` (what supplies link state), `trace_per_round`, `lsdb_reads`, `lsdb_fails`, `lsdb_error` (last failure of `--lsdb-cmd`, empty when the last read worked), `endpoints`, `targets` (addresses measured), `skipped` (`--skip-silent`), `not_measured` (blind-link targets without an endpoint) |
 | `detector.active` | The k-of-n detector currently sees a persistent anomaly |
 | `detector.reason` | Why: 数据面持续异常 (persistent data-plane anomaly, first 5 targets listed), 控制面变化 (control-plane change: adjacency or cost), 带宽持续下降 (bandwidth persistently low), 残差持续异常 (persistent anomaly on the residual, while alarms are active) |
 | `active_alarm` | The most severe active alarm (the newest among equals), or `null`; kept for clients that handle one alarm |
@@ -322,7 +325,8 @@ curl -s http://127.0.0.1:8460/api/topology
 
 `nodes` and `links` are the complete topology from the model bundle, including the interfaces and addresses planned
 automatically ([architecture, topology file](architecture.md#topology-file)). `layout` gives each device a position
-in the unit square (by hop count from the EMS). `fault_types` lists the types accepted by `/api/inject`.
+in the unit square (by hop count from the EMS). `fault_types` lists the types accepted by `/api/inject`;
+`inject_enabled` says whether those endpoints are open.
 
 ## GET /api/series
 
@@ -337,8 +341,8 @@ curl -s 'http://127.0.0.1:8460/api/series?link=L1'
 }
 ```
 
-The targets whose address belongs to the link (its two interface addresses, plus `nqa.<link>` if the link has an NQA
-probe), each with up to the last 120 rounds: `rtt` is the average RTT in ms (`null` when no reply), `loss` is
+The targets whose address belongs to the link (its two interface addresses, plus `nqa.<link>` if the link has such a
+probe target), each with up to the last 120 rounds: `rtt` is the average RTT in ms (`null` when no reply), `loss` is
 0 to 1. An unknown or missing `link` returns `{}`.
 
 ## GET /api/export/{name}.csv
@@ -356,7 +360,9 @@ two names are served; anything else returns 404. Rotated archives are read from 
 
 For demonstrations and tests on the virtual-network backends (`sim`, `netns`, `lxd`). `serve --no-inject` disables
 both endpoints: every POST then returns 403 `{"error": "当前后端不允许注入故障"}` ("this backend does not allow
-fault injection"). The body is a JSON object sent with `Content-Type: application/json` (see
+fault injection"). The `live` backend never accepts them: 403 `{"error": "live 后端只读：不向真实网络注入或清除故障"}`
+("the live backend is read-only: no faults are injected into or cleared on a real network"), and the dashboard hides
+the fault-injection panel (`inject_enabled` in `/api/topology` is `false`, also with `--no-inject`). The body is a JSON object sent with `Content-Type: application/json` (see
 [Conventions](#conventions)); a plain `curl -d` without that header gets 415.
 
 ```bash
@@ -388,7 +394,7 @@ Accepted values:
 | `delay`, `jitter` | greater than 0 and at most 10,000 (ms) |
 | `loss` | greater than 0 and at most 1 |
 | `bandwidth` | greater than 0 and at most 1 |
-| `route_drift` | greater than 0, and the new cost `max(1, round(cost × value))` at most 65,535 (for a link of cost 10, a multiplier of at most 6553) |
+| `route_drift` | greater than 0, and the new cost `max(1, round(cost × value))` at most 65,535 (for a link of cost 10, a multiplier of at most 6553). Only on links between two routers |
 
 One fault per link: injecting on a link that already has a fault replaces it; faults on different links coexist.
 The model was trained on delay 5–100 ms, loss 0.05–0.9, jitter 5–50 ms, remaining bandwidth 0.05–0.5 and cost
@@ -409,6 +415,7 @@ read as `{}`). Errors of both endpoints, all with status 400 unless noted:
 | Unknown link | `未知链路 L99` |
 | `value` is `true`, `false`, `null` or not a number | `value 须为数值，收到 <value>` |
 | `value` is not finite, for example `"nan"` or `1e400` | `value 须为有限数值，收到 <value>` |
+| `route_drift` on a link with a host or the EMS at one end, which has no OSPF cost to drift | `route_drift 只适用于路由器之间的链路，L14 的一端是主机或网管` |
 | `value` out of range | for example `delay 的 value 须大于 0 且不超过 10000ms，收到 -40`, `loss 的 value 须大于 0 且不超过 1（丢包率），收到 5`, `route_drift 的 value（开销倍率）须大于 0，且使 L1 的开销（基线 10）不超过 65535，即倍率不超过 6553，收到 1000000.0` |
 
 The checks run in this order: request size, `Host`, `--no-inject` (403), `Origin` (403), `Content-Type` (415), JSON
@@ -573,7 +580,7 @@ schema_version,alarm_id,ts,epoch,event,severity,category,fault_type,fault_type_c
 |---|---|
 | `schema_version`, `ts`, `epoch` | As in the measurement log |
 | `alarm_id` | Alarm ID; a `clear` row repeats the ID of the alarm it clears |
-| `event` | `raise` or `clear` (the schema file also reserves `update`, which release 0.1.2 does not write) |
+| `event` | `raise` or `clear` (the schema file also reserves `update`, which release 0.2.0 does not write) |
 | `severity`, `category`, `fault_type`, `fault_type_cn` | As in the [alarm object](#the-alarm-object) |
 | `link_id`, `endpoints`, `site` | As in the alarm object (`/`-joined links and the device for `node_down`) |
 | `confidence` | Confidence 0–1 at the time of the row |

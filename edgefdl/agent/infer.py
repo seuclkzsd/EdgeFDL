@@ -84,7 +84,15 @@ class Policy:
         self.np_net = NumpyQNet.from_torch(agent.net) if engine == "numpy" else None
         torch.set_num_threads(1)              # 推理单线程：时延稳定、资源占用低
         self.latencies: List[float] = []
+        self.masked: List[int] = []           # 本部署测量不到、因而不可取的动作（见 set_capabilities）
         self._warmup()
+
+    def set_capabilities(self, noprobe: Sequence[str] = (), nobw: Sequence[str] = ()):
+        """真实网络上测量能力可能不全：不能精测的链路屏蔽其精测动作，与"无精测能力"时一样在判定动作中取最优
+        （不能把"未测"编码成精测结果：无应答的精测表示两端不通）；没有带宽估计的链路屏蔽带宽劣化结论，
+        否则结论既无从证实也无从恢复。虚拟后端两者皆空，研判不变。"""
+        self.masked = [self.enc.lidx[l] * K + PROBE for l in noprobe] + \
+                      [self.enc.lidx[l] * K + FAULT_TYPES.index("bandwidth") for l in nobw]
 
     def keepalive(self):
         """保活前向（不计时）：研判数分钟才发生一次，内存紧张时推理库代码页会被系统回收，
@@ -130,7 +138,7 @@ class Policy:
         研判"其余链路还有没有故障"；gate：交叉错配校验——首选结论在其链路上缺少该类型的直接证据时，
         改取前 3 个候选中第一个有证据的（都没有则保留首选，evident=False）；可传入自定义校验
         gate(该链路轻量特征, 类型, 精测特征或 None, 链路)。"""
-        ex = [self.enc.lidx[l] * K + k for l in exclude for k in range(K)]
+        ex = [self.enc.lidx[l] * K + k for l in exclude for k in range(K)] + self.masked
         t_all = time.perf_counter()
         light, glob = self.enc.light(window, ref)
         feat_ms = (time.perf_counter() - t_all) * 1000
@@ -152,6 +160,9 @@ class Policy:
             if kind == "probe" and probe_fn is not None:
                 dp = probe_fn(lid)
                 li = self.enc.lidx[lid]
+                if not dp.sent:             # 精测没能运行（live 的端点故障）：同不能精测，在其余动作中重新决策，不编码成无应答
+                    ex.append(li * K + PROBE)
+                    continue
                 deep[li] = self.enc.deep(self._finite_bw(dp, li), ref)
                 probed[li] = True
                 probes.append(dict(link=lid, loss=_num(dp.loss), rtt=_num(dp.rtt_avg), mdev=_num(dp.rtt_mdev),

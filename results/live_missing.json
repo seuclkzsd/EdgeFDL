@@ -1,0 +1,831 @@
+{
+ "conditions": {
+  "backend": "sim with measurements removed, handled as on the live backend",
+  "model": "results/model.pt",
+  "topology": "configs/demo_topology.yaml (the bundle's)",
+  "scenarios": "same 84 single-fault scenarios as bench (held until alarm, at most 60 rounds)",
+  "noise_prob": 0.15,
+  "seed": 7,
+  "noise_rounds": 17280,
+  "modes": {
+   "full": "all measurements (control)",
+   "no_lsdb": "no LSDB",
+   "no_ends": "no packet trains, no deep probes; LSDB present",
+   "ping_only": "ping and traceroute from the EMS only; no LSDB, no packet trains, no deep probes, no NQA target of the blind link",
+   "trace_budget": "5 traceroutes per round, in rotation, in every mode but full",
+   "infer": "as ping_only, with link and cost state inferred from ping and traceroute (--infer-state)"
+  }
+ },
+ "modes": {
+  "full": {
+   "noise": {
+    "rounds": 17280,
+    "sim_hours": 24.0,
+    "detector_triggers": 67,
+    "filtered_by_agent": 64,
+    "false_alarms": 0,
+    "false_alarm_exposure_pct": 0.0,
+    "engine_errors": 0
+   },
+   "scenarios": 84,
+   "correct": 84,
+   "summary": {
+    "链路中断": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 30.0,
+     "max_time_to_alarm_s": 30.0
+    },
+    "时延劣化(RTT异常)": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 33.3,
+     "max_time_to_alarm_s": 35.0
+    },
+    "丢包劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 36.0,
+     "max_time_to_alarm_s": 50.0
+    },
+    "抖动劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 34.0,
+     "max_time_to_alarm_s": 35.0
+    },
+    "带宽劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 56.7,
+     "max_time_to_alarm_s": 70.0
+    },
+    "路由漂移": {
+     "n": 9,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 30.0,
+     "max_time_to_alarm_s": 30.0
+    },
+    "性能劣化": {
+     "n": 60,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 40.0,
+     "max_time_to_alarm_s": 70.0
+    }
+   },
+   "not_correct": [],
+   "not_cleared_within_60_rounds": [],
+   "wall_s": 88.0
+  },
+  "no_lsdb": {
+   "noise": {
+    "rounds": 17280,
+    "sim_hours": 24.0,
+    "detector_triggers": 67,
+    "filtered_by_agent": 64,
+    "false_alarms": 0,
+    "false_alarm_exposure_pct": 0.0,
+    "engine_errors": 0
+   },
+   "scenarios": 84,
+   "correct": 60,
+   "summary": {
+    "链路中断": {
+     "n": 15,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": 34.0,
+     "max_time_to_alarm_s": 35.0
+    },
+    "时延劣化(RTT异常)": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 34.0,
+     "max_time_to_alarm_s": 35.0
+    },
+    "丢包劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 39.0,
+     "max_time_to_alarm_s": 50.0
+    },
+    "抖动劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 34.0,
+     "max_time_to_alarm_s": 35.0
+    },
+    "带宽劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 56.0,
+     "max_time_to_alarm_s": 70.0
+    },
+    "路由漂移": {
+     "n": 9,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": 125.0,
+     "max_time_to_alarm_s": 215.0
+    },
+    "性能劣化": {
+     "n": 60,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 40.8,
+     "max_time_to_alarm_s": 70.0
+    }
+   },
+   "not_correct": [
+    {
+     "link": "L1",
+     "type": "link_down",
+     "pred": "L1 bandwidth"
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L2",
+     "type": "link_down",
+     "pred": "L2 bandwidth"
+    },
+    {
+     "link": "L2",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "link_down",
+     "pred": "L3 bandwidth"
+    },
+    {
+     "link": "L4",
+     "type": "link_down",
+     "pred": "L4 bandwidth"
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "pred": "L4 delay"
+    },
+    {
+     "link": "L5",
+     "type": "link_down",
+     "pred": "L5 bandwidth"
+    },
+    {
+     "link": "L5",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L6",
+     "type": "link_down",
+     "pred": "L6 bandwidth"
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "pred": "L6 delay"
+    },
+    {
+     "link": "L7",
+     "type": "link_down",
+     "pred": "L7 bandwidth"
+    },
+    {
+     "link": "L7",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "link_down",
+     "pred": "L8 bandwidth"
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L9",
+     "type": "link_down",
+     "pred": "L9 bandwidth"
+    },
+    {
+     "link": "L9",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L10",
+     "type": "link_down",
+     "pred": "L10 bandwidth"
+    },
+    {
+     "link": "L10",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L11",
+     "type": "link_down",
+     "pred": "L11 bandwidth"
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "pred": "L12 bandwidth"
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "pred": "L13 bandwidth"
+    },
+    {
+     "link": "L14",
+     "type": "link_down",
+     "pred": "L14 bandwidth"
+    },
+    {
+     "link": "L15",
+     "type": "link_down",
+     "pred": "L15 bandwidth"
+    }
+   ],
+   "not_cleared_within_60_rounds": [],
+   "wall_s": 85.4
+  },
+  "no_ends": {
+   "noise": {
+    "rounds": 17280,
+    "sim_hours": 24.0,
+    "detector_triggers": 58,
+    "filtered_by_agent": 45,
+    "false_alarms": 3,
+    "false_alarm_exposure_pct": 0.087,
+    "engine_errors": 0
+   },
+   "scenarios": 84,
+   "correct": 69,
+   "summary": {
+    "链路中断": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 30.0,
+     "max_time_to_alarm_s": 30.0
+    },
+    "时延劣化(RTT异常)": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 34.7,
+     "max_time_to_alarm_s": 35.0
+    },
+    "丢包劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 37.0,
+     "max_time_to_alarm_s": 45.0
+    },
+    "抖动劣化": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 33.7,
+     "max_time_to_alarm_s": 35.0
+    },
+    "带宽劣化": {
+     "n": 15,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": null,
+     "max_time_to_alarm_s": null
+    },
+    "路由漂移": {
+     "n": 9,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 28.3,
+     "max_time_to_alarm_s": 30.0
+    },
+    "性能劣化": {
+     "n": 60,
+     "type_acc": 0.75,
+     "joint_acc": 0.75,
+     "mean_time_to_alarm_s": 35.1,
+     "max_time_to_alarm_s": 45.0
+    }
+   },
+   "not_correct": [
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L2",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L5",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L7",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L9",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L10",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L11",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L14",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L15",
+     "type": "bandwidth",
+     "pred": "无告警"
+    }
+   ],
+   "not_cleared_within_60_rounds": [],
+   "wall_s": 80.0
+  },
+  "ping_only": {
+   "noise": {
+    "rounds": 17280,
+    "sim_hours": 24.0,
+    "detector_triggers": 58,
+    "filtered_by_agent": 45,
+    "false_alarms": 3,
+    "false_alarm_exposure_pct": 0.087,
+    "engine_errors": 0
+   },
+   "scenarios": 84,
+   "correct": 51,
+   "summary": {
+    "链路中断": {
+     "n": 15,
+     "type_acc": 0.6,
+     "joint_acc": 0.6,
+     "mean_time_to_alarm_s": 46.0,
+     "max_time_to_alarm_s": 175.0
+    },
+    "时延劣化(RTT异常)": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 33.9,
+     "max_time_to_alarm_s": 35.0
+    },
+    "丢包劣化": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 40.0,
+     "max_time_to_alarm_s": 75.0
+    },
+    "抖动劣化": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 33.6,
+     "max_time_to_alarm_s": 35.0
+    },
+    "带宽劣化": {
+     "n": 15,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": null,
+     "max_time_to_alarm_s": null
+    },
+    "路由漂移": {
+     "n": 9,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": 42.5,
+     "max_time_to_alarm_s": 65.0
+    },
+    "性能劣化": {
+     "n": 60,
+     "type_acc": 0.7,
+     "joint_acc": 0.7,
+     "mean_time_to_alarm_s": 35.8,
+     "max_time_to_alarm_s": 75.0
+    }
+   },
+   "not_correct": [
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L1",
+     "type": "route_drift",
+     "pred": "L4 loss"
+    },
+    {
+     "link": "L2",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L2",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "link_down",
+     "pred": "L6 loss"
+    },
+    {
+     "link": "L3",
+     "type": "delay",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "loss",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "jitter",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "pred": "L4 delay"
+    },
+    {
+     "link": "L5",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L5",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L6",
+     "type": "route_drift",
+     "pred": "L6 delay"
+    },
+    {
+     "link": "L7",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L7",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L9",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L9",
+     "type": "route_drift",
+     "pred": "无告警"
+    },
+    {
+     "link": "L10",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L10",
+     "type": "route_drift",
+     "pred": "L12 loss"
+    },
+    {
+     "link": "L11",
+     "type": "link_down",
+     "pred": "L11 loss"
+    },
+    {
+     "link": "L11",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L12",
+     "type": "link_down",
+     "pred": "L12 loss"
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L13",
+     "type": "link_down",
+     "pred": "L13 loss"
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L14",
+     "type": "link_down",
+     "pred": "L14 loss"
+    },
+    {
+     "link": "L14",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L15",
+     "type": "link_down",
+     "pred": "L15 loss"
+    },
+    {
+     "link": "L15",
+     "type": "bandwidth",
+     "pred": "无告警"
+    }
+   ],
+   "not_cleared_within_60_rounds": [
+    {
+     "link": "L9",
+     "type": "loss",
+     "pred": "L9 loss"
+    }
+   ],
+   "wall_s": 77.8
+  },
+  "infer": {
+   "noise": {
+    "rounds": 17280,
+    "sim_hours": 24.0,
+    "detector_triggers": 58,
+    "filtered_by_agent": 45,
+    "false_alarms": 3,
+    "false_alarm_exposure_pct": 0.087,
+    "engine_errors": 0
+   },
+   "scenarios": 84,
+   "correct": 63,
+   "summary": {
+    "链路中断": {
+     "n": 15,
+     "type_acc": 1.0,
+     "joint_acc": 1.0,
+     "mean_time_to_alarm_s": 34.0,
+     "max_time_to_alarm_s": 40.0
+    },
+    "时延劣化(RTT异常)": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 34.6,
+     "max_time_to_alarm_s": 35.0
+    },
+    "丢包劣化": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 40.4,
+     "max_time_to_alarm_s": 90.0
+    },
+    "抖动劣化": {
+     "n": 15,
+     "type_acc": 0.9333,
+     "joint_acc": 0.9333,
+     "mean_time_to_alarm_s": 33.6,
+     "max_time_to_alarm_s": 35.0
+    },
+    "带宽劣化": {
+     "n": 15,
+     "type_acc": 0.0,
+     "joint_acc": 0.0,
+     "mean_time_to_alarm_s": null,
+     "max_time_to_alarm_s": null
+    },
+    "路由漂移": {
+     "n": 9,
+     "type_acc": 0.8889,
+     "joint_acc": 0.6667,
+     "mean_time_to_alarm_s": 42.2,
+     "max_time_to_alarm_s": 60.0
+    },
+    "性能劣化": {
+     "n": 60,
+     "type_acc": 0.7,
+     "joint_acc": 0.7,
+     "mean_time_to_alarm_s": 36.2,
+     "max_time_to_alarm_s": 90.0
+    }
+   },
+   "not_correct": [
+    {
+     "link": "L1",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L2",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "delay",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "loss",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "jitter",
+     "pred": "无告警"
+    },
+    {
+     "link": "L3",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L4",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L4",
+     "type": "route_drift",
+     "pred": "L4 delay"
+    },
+    {
+     "link": "L5",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L6",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L7",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L8",
+     "type": "route_drift",
+     "pred": "L5 route_drift"
+    },
+    {
+     "link": "L9",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L9",
+     "type": "route_drift",
+     "pred": "L7 route_drift"
+    },
+    {
+     "link": "L10",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L11",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L12",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L13",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L14",
+     "type": "bandwidth",
+     "pred": "无告警"
+    },
+    {
+     "link": "L15",
+     "type": "bandwidth",
+     "pred": "无告警"
+    }
+   ],
+   "not_cleared_within_60_rounds": [],
+   "wall_s": 85.9
+  }
+ }
+}

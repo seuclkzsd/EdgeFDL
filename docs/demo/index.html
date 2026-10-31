@@ -1,0 +1,79 @@
+<!doctype html>
+<!-- SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Recorded replay of the EdgeFDL dashboard. replay.js loads the real dashboard page into the iframe and answers
+     its API calls from frames.json. tools/demo/build_site.py assembles the static site. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EdgeFDL 录制回放 · recorded replay</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2a3240;--text:#e6edf3;--muted:#8b98a9;
+  --ok:#3fb37f;--warn:#e3b341;--bad:#f85149;--accent:#58a6ff}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+  font:14px/1.45 -apple-system,"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif}
+#player{flex:none;background:var(--panel);border-bottom:1px solid var(--line);padding:8px 16px 10px}
+#banner{font-size:12.5px;color:var(--muted)}
+#banner b{color:#0d1117;background:var(--warn);border-radius:4px;padding:1px 7px;margin-right:6px}
+#banner code{background:#0a0e14;border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--text);white-space:nowrap}
+#banner a{color:var(--accent)}
+#row{display:flex;align-items:center;gap:10px;margin-top:8px}
+button,select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer}
+#play{min-width:94px;background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:600}
+#timeline{position:relative;flex:1;min-width:0}
+#scenes{display:flex;gap:2px;height:24px}
+#scenes button{flex:1 1 0;min-width:0;padding:0 4px;font-size:12px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scenes button.on{background:var(--accent);border-color:var(--accent);color:#0d1117;font-weight:600}
+#marks{position:relative;height:7px;margin-top:3px}
+#marks i{position:absolute;top:0;width:3px;height:7px;margin-left:-1px;border-radius:1px}
+#marks i.raise{background:var(--bad)}#marks i.clear{background:var(--ok)}
+#seek{display:block;width:100%;margin:2px 0 0;accent-color:var(--accent);cursor:pointer}
+#pos{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right;min-width:92px}
+#story{display:flex;align-items:stretch;gap:14px;margin-top:6px}
+#caption{flex:1;min-width:0;min-height:58px}
+#cap-zh{font-size:15px;font-weight:600}
+#cap-en{font-size:13px;color:var(--muted)}
+#counts{flex:none;display:flex;gap:8px}
+.count{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px 12px;min-width:136px}
+.count b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.count span{font-size:11px;color:var(--muted)}
+.count.hot b{color:var(--warn)}.count.bad b{color:var(--bad)}
+#dash{flex:1;min-height:0;width:100%;border:0;display:block;background:var(--bg)}
+@media (max-width:900px){#row{flex-wrap:wrap}#timeline{order:3;flex-basis:100%}#story{flex-direction:column}
+  #scenes button{font-size:11px}}
+</style>
+</head>
+<body>
+<section id="player" aria-label="回放控制 Replay controls">
+  <div id="banner"><b>录制回放 Recorded replay</b>
+    真实系统在仿真后端上的一次运行，页面数据全部是当时的接口应答，不是在线系统。
+    A real run of the system on the simulator; all data on this page are its recorded API responses, not a live system.<br>
+    运行真实系统 Run the real thing: <code>pip install -r requirements.txt &amp;&amp; python -m edgefdl serve --model results/model.pt --backend sim</code>
+    · <a href="https://github.com/seuclkzsd/EdgeFDL#quick-start" target="_blank" rel="noopener">GitHub</a><span id="rec"></span>
+  </div>
+  <div id="row">
+    <button id="play" type="button">暂停 Pause</button>
+    <select id="speed" aria-label="回放速度 Speed" title="回放速度 Speed"></select>
+    <div id="timeline">
+      <div id="scenes" role="group" aria-label="场景 Scenarios"></div>
+      <div id="marks" aria-hidden="true"></div>
+      <input id="seek" type="range" min="0" value="0" step="1" aria-label="时间轴 Timeline">
+    </div>
+    <div id="pos"></div>
+  </div>
+  <div id="story">
+    <div id="caption"><div id="cap-zh">加载中… Loading…</div><div id="cap-en"></div></div>
+    <div id="counts">
+      <div class="count" id="c-over"><b>-</b><span>越过阈值的目标 Targets over threshold</span></div>
+      <div class="count" id="c-alarm"><b>-</b><span>活动告警 Active alarms</span></div>
+    </div>
+  </div>
+</section>
+<iframe id="dash" title="EdgeFDL 运维大屏 dashboard"></iframe>
+<script src="replay.js"></script>
+</body>
+</html>

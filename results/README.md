@@ -24,6 +24,16 @@ dashboard; the [glossary](#glossary) below translates every one of them.
 | `pipeline.log` | Console log (Chinese) of the run: baseline, sample generation, training progress, evaluation tables of both test sets | `pipeline` |
 | `smoke/run1.log` … `run3.log` | Console logs (Chinese) of three consecutive real-protocol-stack smoke tests, 26/26 checks each | `scripts/lab.sh smoke` |
 | `sim_vs_stack.json` | Per-target baseline RTT of the healthy demo network on the real protocol stack (`netns`, FRR OSPF, `tc`) and on the simulator, 30 rounds each | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out results/sim_vs_stack.json` |
+| `compare.json` | Measured comparison with re-implementations of the methods behind existing tools, on the same measurement stream as the engine: 5 test seeds, 6 conditions, 84 single-fault scenarios per seed, 300 two-fault and 60 device-down cases, 5 simulated normal days per condition; tuning results and the selected parameters. See [docs/comparison.md](../docs/comparison.md#measured-comparison). `overall` totals each method over all conditions; `sensitivity` lists regression + EMS settings that differ only in λ; `paired` gives paired gaps with scenario-resampling intervals; `edgefdl_no_deep` uses no deep probe in any condition; `edgefdl_deep_probes_per_fault` is broken down by condition; `tuning.*.grid_edges` names values on a grid edge; `window_tradeoff` gives the best validation point per window | `compare --out runs/compare --workers 24` |
+| `demo_replay.json` | Test conditions and per-scene outcomes of the recorded dashboard replay (`docs/demo/frames.json`): one `edgefdl serve` run on the simulation backend with `model.pt`, 5 s rounds, seed 0, noise 0.1, 164 rounds. Time to alarm, recovery time and targets over threshold per scene | `tools/demo/record.py` |
+| `docker_check.json` | Container image: size, runtime versions, security checks, REST end-to-end timings, memory, stop time, and whether evaluating the bundled model on `runs/v6/test.npz` inside the image gives a file identical to `eval_test.json`. Test conditions inside the file | `CI_IMAGE_TESTSET=runs/v6/test.npz CI_IMAGE_REPORT=results/docker_check.json tools/dev/ci.sh image` |
+| `lab_packages.txt` | Debian package versions of the external programs in the lab image | `docker run --rm edgefdl-lab:latest dpkg-query -W frr iproute2 iperf3 traceroute iputils-ping procps` |
+| `realstack.json` | Online accuracy on the real protocol stack: 84 single-fault scenarios, device-down and two-fault trials, fault-free periods, the same scenarios with the bundled baseline, per-container statistics and test conditions | see [docs/results.md, section 3.1](../docs/results.md#31-online-accuracy-on-the-real-protocol-stack) |
+| `realstack/` | Gzipped logs of that run: `a_shard*_measure.csv.gz` (`measure_log.csv` schema, the 84 scenarios) and `*_alarm.csv.gz` (`alarm_log.csv` schema, all containers of runs a and b) | `scripts/realstack_eval.py merge --raw` |
+| `live_blackbox.json` | `live` backend on the real stack: every scenario (alarmed type and link, time to alarm, time to clear) for four input sets, with test conditions | `scripts/live_blackbox.py` |
+| `live_intake.json` | The same run on a model built from `configs/intake_demo` | `scripts/live_blackbox.py` |
+| `live_missing.json` | Cost of each missing input on the simulator: 84 scenarios and a 24 h noise run per input set | `scripts/live_missing.py` |
+| `live_trace_check.json` | Traceroute under router ICMP rate limits (round time, complete paths, bytes), and the broadcast-network LSDB check | `scripts/live_blackbox.py --trace-check` |
 
 ## Commands
 
@@ -56,10 +66,18 @@ files vary slightly from run to run. Runtimes are listed in
 
 ## Reading the JSON files
 
+`realstack.json`: `summary.single` (`overall`, `by_type`, `by_category`, `misses`), `summary.node`, `summary.dual`,
+`summary.normal` (`quiet`, `transients`), `summary.engine`, `summary.shard_check`, `summary.single_bundle_baseline`.
+`scenarios[]` holds one record per scenario: `link`, `type`, `value`, `alarm_type`, `alarm_link`, `type_ok`, `loc_ok`,
+`time_to_alarm_s`, `rounds_to_alarm`, `cleared`, `time_to_clear_s`, `n_alarms`, `alarms`, `pre_alarms`, `adj_full_s`, and
+`round_inject` / `round_clear`, which match `round_id` in the logs. `label` is in Chinese. `run` names the container.
+`node_cases[]` and `dual_cases[]` use the fields of `robust.json`. `conditions` records versions, the measurement plan,
+OSPF timers, the model hash and the commit.
+
 Conventions used in all files:
 
 - Accuracies and rates are fractions between 0 and 1, except keys ending in `_pct`, which are percentages.
-- `_s` keys are seconds of simulated time (one measurement round is 5 s); `_ms` keys are wall-clock milliseconds.
+- `_s` keys are seconds of simulated time (one measurement round is 5 s), except in `realstack.json` and `live_*.json`, where they are wall-clock seconds; `_ms` keys are wall-clock milliseconds.
 - Fault types use the identifiers `link_down`, `delay`, `loss`, `jitter`, `bandwidth`, `route_drift`, plus `normal`
   (no fault) and `node_down` (device down, produced by the engine's aggregation of link-down conclusions).
 - An alarm or a truth item is written as `"<link> <type>"` (for example `"L1 link_down"`) or as a pair

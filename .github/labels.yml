@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
+# SPDX-License-Identifier: Apache-2.0
+# The label set of the repository: group -> labels. `python tools/dev/labels.py` checks this file and
+# prints the gh commands; the workflow .github/workflows/labels.yml applies it. Issue templates and
+# .github/dependabot.yml use these names (tests/test_packaging.py checks that).
+type:
+  - {name: bug, color: d73a4a, description: "Behaviour that differs from the documentation, or a crash"}
+  - {name: enhancement, color: a2eeef, description: "A new feature or an improvement of an existing one"}
+  - {name: documentation, color: 0075ca, description: "Documentation only"}
+  - {name: question, color: d876e3, description: "Usage question"}
+  - {name: field report, color: 5319e7, description: "How EdgeFDL behaved on a real network"}
+  - {name: dependencies, color: 0366d6, description: "Dependency update"}
+area:
+  - {name: "area: intake", color: c5def5, description: "Intake form, device configuration and LLDP extraction, topology model"}
+  - {name: "area: vnet", color: c5def5, description: "Equivalent virtual network: sim, netns, lxd backends"}
+  - {name: "area: faults", color: c5def5, description: "Fault model, injector, sample generator"}
+  - {name: "area: measure", color: c5def5, description: "Probes, parsers, CSV store"}
+  - {name: "area: agent", color: c5def5, description: "Features, DDQN, inference engines, remediation advice"}
+  - {name: "area: core", color: c5def5, description: "Detector, engine, alarm sinks, HTTP API"}
+  - {name: "area: dashboard", color: c5def5, description: "Web dashboard"}
+  - {name: "area: evaluation", color: c5def5, description: "Self-test, robustness suite, published results"}
+  - {name: "area: ci", color: c5def5, description: "CI, release, tools/dev, container image"}
+  - {name: "area: docs", color: c5def5, description: "Pages under docs/ and the project documents"}
+priority:
+  - {name: "priority: high", color: b60205, description: "Wrong or missing alarms, broken install, security hardening"}
+  - {name: "priority: medium", color: fbca04, description: "Should go into one of the next releases"}
+  - {name: "priority: low", color: 0e8a16, description: "Welcome, no planned date"}
+community:
+  - {name: good first issue, color: 7057ff, description: "Small, well described, no knowledge of the agent needed"}
+  - {name: help wanted, color: 008672, description: "The maintainers would welcome a contribution"}

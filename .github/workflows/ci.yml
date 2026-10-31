@@ -1,10 +1,13 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
 # Tests and end-to-end checks on every push to main and every pull request.
-#   test       Python 3.9 and 3.12: SPDX license headers, the unit tests, and the online system end
-#              to end (serve: a fault injected through the REST API must raise the right alarm, which
-#              must clear after the fault is cleared); on 3.12 also a short offline pipeline run
-#              (samples, training, evaluation, self-test) and the sdist/wheel build
+#   test       Python 3.9 and 3.12: SPDX license headers, the licenses of the installed runtime
+#              dependencies, the unit tests, and the online system end to end (serve: a fault injected
+#              through the REST API must raise the right alarm, which must clear after the fault is
+#              cleared); on 3.12 also ruff, the unit-test coverage (in the job summary), a short offline
+#              pipeline run (samples, training, evaluation, self-test) and the sdist/wheel build
+#   image      the container image of compose.yaml: built from requirements-lock.txt, started without
+#              privileges, the same serve check through the published port, a graceful stop
 #   realstack  the netns backend on the real Linux protocol stack (FRR OSPF, tc) in a privileged
 #              Docker container: the 26 checks of scripts/netns_smoke.py
 # Every step is a step of tools/dev/ci.sh, which runs the same way on a developer machine (its header
@@ -50,7 +53,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       # The CPU build of PyTorch is all EdgeFDL needs (training and inference run on the CPU).
       - name: Dependencies (CPU PyTorch, NumPy, PyYAML, psutil)
@@ -59,11 +64,26 @@ jobs:
           python -m pip install numpy pyyaml psutil
           python -c "import sys, torch, numpy; print(sys.version.split()[0], 'torch', torch.__version__, 'numpy', numpy.__version__)"
 
+      - name: Development tools (ruff, coverage.py, build)
+        if: matrix.python == '3.12'
+        run: python -m pip install -r requirements-dev.txt
+
       - name: License headers (SPDX)
         run: tools/dev/ci.sh licenses
 
+      - name: Licenses of the runtime dependencies
+        run: tools/dev/ci.sh deps
+
+      - name: Lint (ruff)
+        if: matrix.python == '3.12'
+        run: tools/dev/ci.sh lint
+
       - name: Unit tests
         run: tools/dev/ci.sh tests
+
+      - name: Test coverage (job summary)
+        if: matrix.python == '3.12'
+        run: tools/dev/ci.sh coverage
 
       - name: Online system end to end (serve, REST fault injection, alarm, recovery, /metrics)
         run: tools/dev/ci.sh serve
@@ -74,9 +94,7 @@ jobs:
 
       - name: Package build (sdist and wheel)
         if: matrix.python == '3.12'
-        run: |
-          python -m pip install build
-          tools/dev/ci.sh dist
+        run: tools/dev/ci.sh dist
 
       - name: Logs on failure
         if: failure()
@@ -89,6 +107,19 @@ jobs:
             build/ci/serve/logs/
           if-no-files-found: ignore
           retention-days: 14
+
+  image:
+    name: container image (docker compose, REST fault injection, alarm, stop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the image and check it end to end
+        run: tools/dev/ci.sh image
 
   realstack:
     name: real protocol stack (netns + FRR OSPF + tc in Docker)
