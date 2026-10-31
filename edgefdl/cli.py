@@ -10,6 +10,7 @@
   eval    → 分类别指标评估
   bench   → 指标自测（推理时延、带宽/资源占用、抗干扰、场景测试）
   robust  → 鲁棒性测试（强干扰、测量缺陷、故障幅度、背景波动、多故障）
+  compare → 同台对比：同一测量流上的阈值告警、告警分组、布尔层析、NetBouncer 式回归、007 式投票
   serve   → 网管在线运行（测量 + 研判 + 告警 + Web 大屏）
 pipeline 一键串起 baseline→gen→train→eval→bench。
 """
@@ -187,6 +188,13 @@ def cmd_robust(args):
                ek=ek or None, kinds=args.kinds.split(",") if args.kinds else None)
 
 
+def cmd_compare(args):
+    from .compare import TEST_SEEDS, run_compare
+    seeds = [int(x) for x in args.seeds.split(",")] if args.seeds else TEST_SEEDS
+    run_compare(args.model, args.out, workers=args.workers, seeds=seeds, rounds=args.rounds, val_rounds=args.val_rounds,
+                dual_n=args.dual, node_reps=args.node_reps, conds=args.conditions.split(",") if args.conditions else None)
+
+
 def cmd_serve(args):
     from .core.api import serve
     eng, topo, backend = build_engine(args.model, args.backend, args.log_dir, args,
@@ -328,6 +336,18 @@ def main(argv=None):
     p.add_argument("--single-alarm", action="store_true", help="总控退化为单告警（同一时刻至多一条活动告警），用于对照/回退")
     p.add_argument("--kinds", help="只跑指定在线项，逗号分隔：long,scen,dual,node,single,node_dual,node_back")
     p.set_defaults(fn=cmd_robust)
+
+    p = sp.add_parser("compare", help="同台对比：同一测量流上回放现有方法并与在线引擎比较")
+    p.add_argument("--model", required=True)
+    p.add_argument("--out", required=True)
+    p.add_argument("--workers", type=int, default=24)
+    p.add_argument("--seeds", help="测试种子，逗号分隔（默认 1001~1005）")
+    p.add_argument("--rounds", type=int, default=17280, help="正常运行轮数（默认 = 24h @5s）")
+    p.add_argument("--val-rounds", type=int, default=4320, help="验证集每个条件的正常运行轮数")
+    p.add_argument("--dual", type=int, default=60, help="每个种子的双故障试验次数")
+    p.add_argument("--node-reps", type=int, default=2, help="每个种子每台设备的宕机试验次数")
+    p.add_argument("--conditions", help="只跑指定条件，逗号分隔")
+    p.set_defaults(fn=cmd_compare)
 
     p = sp.add_parser("serve", help="在线运行网管系统 + Web 大屏")
     p.add_argument("--model", required=True)
