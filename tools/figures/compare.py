@@ -88,7 +88,7 @@ def figure(r, out):
     axes[0].get_yticklabels()[-1].set_fontweight("bold")
     for ax in axes[1:]:
         ax.set_yticks([])
-    for ax, t in zip(axes, ("Link + type correct, % of 84 faults (standard)", "Link + type correct, % of 84 faults",
+    for ax, t in zip(axes, ("Link + type correct, % by fault type (standard)", "Link + type correct, % by condition",
                             "False alarms per simulated day")):
         ax.set_xlabel(t, fontsize=9.5, color=INK, labelpad=6)
     fig.savefig(out, dpi=170, bbox_inches="tight", facecolor=SURFACE)
@@ -98,12 +98,22 @@ def fmt(v, p=1):
     return "n/a" if v is None else f"{v:.{p}f}"
 
 
+def rows_for(r, extra=()):
+    """Table rows: the low-FA point appears only where it differs from the F1-tuned setting."""
+    low = []
+    for k, n in LOW:
+        key = k.replace(":lowfa", "")
+        if key in r.get("tuning_low_fa", {}) and r["tuning_low_fa"][key]["params"] != r["tuning"][key]["params"]:
+            low.append((k, n))
+    return ROWS[:-1] + tuple(low) + ROWS[-1:] + extra
+
+
 def tables(r):
     print("| Method | Detected % | Link % | Link + type % | Link in any alarm % | Alarms per fault, mean / max | "
           "Time to first alarm, s | False alarms per day |")
     print("|---|---|---|---|---|---|---|---|")
     extra = (("edgefdl_no_deep", "EdgeFDL without deep probes"),)
-    for k, n in ROWS[:-1] + LOW + ROWS[-1:] + extra:
+    for k, n in rows_for(r, extra):
         a = r["single"].get(k, {}).get("standard")
         if not a:
             continue
@@ -112,9 +122,20 @@ def tables(r):
               f"{fmt(a['all_link_pct'])} | {a['alarms_mean']:.2f} / {a['alarms_max']} | "
               f"{fmt(a['time_to_alarm_mean_s'])} | {fmt(fa, 2)} |")
     print()
+    print("| Method, default parameters | Link % | Link + type % | Alarms per fault, mean / max | Time to first alarm, s | "
+          "False alarms per day | 15 s transients: link + type % / false alarms per day |")
+    print("|---|---|---|---|---|---|---|")
+    for k, n in ((k.replace(":tuned", ":default"), x) for k, x in ROWS if k.endswith(":tuned") and k != "threshold:tuned"):
+        a = r["single"][k]["standard"]
+        b = r["single"][k]["transient_15s"]
+        fa = r["false_alarms"][k]
+        print(f"| {n} | {fmt(a['link_pct'])} | {fmt(a['link_type_pct'])} | {a['alarms_mean']:.2f} / {a['alarms_max']} | "
+              f"{fmt(a['time_to_alarm_mean_s'])} | {fmt(fa['standard']['per_day'])} | "
+              f"{fmt(b['link_type_pct'])} / {fmt(fa['transient_15s']['per_day'])} |")
+    print()
     print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in TYPES) + " |")
     print("|---|" + "---|" * len(TYPES))
-    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
+    for k, n in rows_for(r):
         if k not in r["by_type"] or k == "threshold:default":
             continue
         print(f"| {n} | " + " | ".join(fmt((r["by_type"][k]["standard"].get(t) or {}).get("time_to_alarm_mean_s"), 0)
@@ -122,7 +143,7 @@ def tables(r):
     print()
     print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in TYPES) + " | L3 (all types) |")
     print("|---|" + "---|" * (len(TYPES) + 1))
-    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
+    for k, n in rows_for(r):
         if k not in r["by_type"]:
             continue
         row = [fmt((r["by_type"][k]["standard"].get(t) or {}).get("link_type_pct")) for t, _ in TYPES]
@@ -131,7 +152,7 @@ def tables(r):
     print()
     print("| Method | " + " | ".join(x.replace("\n", " ") for _, x in CONDS) + " |")
     print("|---|" + "---|" * len(CONDS))
-    for k, n in ROWS[:-1] + LOW + ROWS[-1:]:
+    for k, n in rows_for(r):
         if k not in r["single"]:
             continue
         row = []
@@ -144,7 +165,7 @@ def tables(r):
     print("| Method | Dual: first correct % | Dual: both links % | Dual: both + types % | Dual: alarms mean / max | "
           "Dual: wrong alarms | Device: named % | Device: alarms mean / max |")
     print("|---|---|---|---|---|---|---|---|")
-    for k, n in ROWS[:-1] + LOW + ROWS[-1:] + extra:
+    for k, n in rows_for(r, extra):
         d, g = r["dual"].get(k) or {}, r["node"].get(k) or {}
         if not d:
             continue

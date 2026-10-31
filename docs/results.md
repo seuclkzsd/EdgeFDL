@@ -350,6 +350,7 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Full pipeline: baseline, samples, training, evaluation, self-test | `python -m edgefdl pipeline --out runs/v6 --workers 16` | `runs/v6/` with `baseline.json`, `train/val/test/test_rand.npz`, `model.pt`, `eval_test.json`, `eval_test_rand.json`, `bench/bench.json` | about 15 minutes |
 | Self-test (72-hour equivalent) | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | `runs/bench/bench.json` | about 5 minutes, single process |
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
+| Measured comparison | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | `runs/compare/compare.json`, the file published as `results/compare.json` | about 14 min with 24 workers |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
 | Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
 | Unit tests | `python -m unittest discover -s tests` | 72 tests | about 20 s |
@@ -386,6 +387,7 @@ Notes:
 | [`results/pipeline.log`](../results/pipeline.log) | Console log of sample generation, training and evaluation |
 | [`results/smoke/`](../results/smoke/) | Section 3, three runs |
 | [`results/sim_vs_stack.json`](../results/sim_vs_stack.json) | Section 3, per-target RTT of the real stack and the simulator |
+| [`results/compare.json`](../results/compare.json) | Measured comparison with re-implementations of published methods, see [comparison.md](comparison.md#measured-comparison) |
 
 The file formats and the JSON keys, including an English glossary of the Chinese keys and condition names, are
 documented in [`results/README.md`](../results/README.md).
