@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
-# Development tools, not needed at run time: tools/dev/ci.sh lint, coverage, dist.
+# Development tools, not needed at run time: tools/dev/ci.sh lint, coverage, dist. Python >= 3.11.
 build==1.6.1
 coverage==7.17.0
 ruff==0.17.3

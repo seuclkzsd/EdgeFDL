@@ -83,8 +83,8 @@ root [`Dockerfile`](../Dockerfile) does not contain them.
 | iproute2 (`ip`, `tc`) | Namespaces, links, fault injection | iproute2 6.1.0-3 | GPL-2.0 |
 | iperf3 | Bandwidth of a deep probe | iperf3 3.12-1+deb12u2 | BSD-3-Clause; bundled parts under other permissive licenses |
 | traceroute | Path measurement | traceroute 1:2.1.2-1 | GPL-2.0-or-later; `libsupp` LGPL-2.1-or-later |
-| iputils (`ping`) | Light and deep probes | iputils-ping 3:20221126-1+deb12u1 | BSD-3-Clause for `ping`; other tools of the package GPL-2.0-or-later |
-| procps (`sysctl`) | Per-namespace kernel settings | procps 2:4.0.2-3 | GPL-2.0-or-later; libraries LGPL |
+| iputils (`ping`) | Light and deep probes | iputils-ping 3:20221126-1+deb12u1 | BSD-3-Clause for `ping`; some files of the source package GPL-2.0-or-later |
+| procps (`sysctl`) | Per-namespace kernel settings | procps 2:4.0.2-3 | GPL-2.0-or-later for `sysctl`; most of the package LGPL-2.1-or-later |
 | LXD (`lxc` client) | `lxd` backend only; not in the lab image | installed by the operator | AGPL-3.0-only since LXD 5.20, Apache-2.0 up to 5.19; the client SDKs remain Apache-2.0 |
 
 Package versions are in [`results/lab_packages.txt`](../results/lab_packages.txt), printed by `dpkg-query` in the lab

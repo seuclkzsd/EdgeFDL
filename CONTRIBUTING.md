@@ -53,7 +53,7 @@ git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
 python -m venv .venv && source .venv/bin/activate
 pip install torch --index-url https://download.pytorch.org/whl/cpu   # optional: the smaller CPU-only PyTorch
 pip install -r requirements.txt
-pip install -r requirements-dev.txt                                  # ruff, coverage.py, build
+pip install -r requirements-dev.txt                                  # optional, Python >= 3.11: ruff, coverage.py, build
 python -m unittest discover -s tests
 ```
 
@@ -91,7 +91,7 @@ from this list and say so in a new issue, so that nobody does the same work twic
    tell you what to fix is a good first issue in itself.
 
    ```bash
-   cp configs/demo_topology.yaml runs/my_topology.yaml
+   mkdir -p runs && cp configs/demo_topology.yaml runs/my_topology.yaml
    python -m edgefdl topo runs/my_topology.yaml
    ```
 
