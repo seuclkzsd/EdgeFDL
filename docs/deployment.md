@@ -373,6 +373,267 @@ bandwidth of 3 links is estimated per round. A shorter `--interval` shortens the
 the probe traffic in the same proportion. `--confirm 3` trades a slower first alarm for one more consistent
 diagnosis.
 
+## Connecting to a real network
+
+`serve --backend live` runs the online service against the network itself, from the EMS. It sends pings and
+traceroutes from the local host to the addresses in the topology and reads nothing else unless you give it more. It
+creates nothing and changes nothing: `up` and `down` do nothing on this backend, there is no virtual network, and no
+device receives a command.
+
+### Prerequisites
+
+- **The EMS sits where the topology says.** It is the `vantage` device of the topology, connected by the link the
+  topology gives it, and it has a route to every address in the topology. `traceroute` paths are compared with the
+  topology from this point of view.
+- **The topology holds the real addresses.** `intake` fills in whatever the form leaves blank from `ip_plan`: planned
+  addresses are fine for a virtual network, but on a real one they do not answer. Give the real address of every link
+  in the configurations or in the form, including the EMS uplink, and let `preflight` confirm them. Loopbacks are
+  monitored targets as well; the router ID must equal the loopback for `--lsdb-cmd`.
+- **A model trained for this topology.** The interface names of the device configurations can stay as they are:
+  `live` uses addresses, and names appear only in the alarm text. There is no need for the Linux-name copy that `netns`
+  and `lxd` require ([section 3](#3-build-the-equivalent-network-and-train-the-model)).
+- **`ping` and the Linux `traceroute` package on the EMS** (not the BusyBox or `inetutils` variants: `-I`, `-N` and `-q`
+  are needed), with the [permissions below](#icmp-permissions).
+- **A healthy network while the baseline is learned.** A fault present during learning becomes part of the baseline.
+
+### From intake to alarms
+
+```bash
+# 1. Describe the network and check coverage (section 2)
+python -m edgefdl intake --form form.yaml --configs configs/ --lldp neighbours.csv -o runs/site/topology.yaml
+python -m edgefdl topo runs/site/topology.yaml
+
+# 2. Train and evaluate on the equivalent network (section 3): on the simulator, nothing touches the real network
+python -m edgefdl pipeline --topo runs/site/topology.yaml --out runs/site --workers 16
+
+# 3. Check the connection from the EMS (read-only; exit code 1 if something is missing)
+python -m edgefdl preflight --model runs/site/model.pt --infer-state
+
+# 4. Go live: learn the baseline on the real network, then start the service
+python -m edgefdl serve --model runs/site/model.pt --backend live --infer-state --learn-rounds 120 \
+    --engine numpy --log-dir runs/site/logs --sinks '[{"type": "syslog", "host": "10.0.0.5"}]'
+```
+
+`preflight` pings every address (3 packets each) and lists those that do not answer with their device and link; it
+checks that `traceroute` runs with the current privileges, compares the measured paths with the topology, runs
+`--lsdb-cmd` and tests every link with endpoints on both sides. It prints one line per finding, ends with `检查通过`
+("check passed") or `检查未通过` ("check failed"), and `--json FILE` saves the report. `serve` and `baseline` run the same
+check first and stop if an address does not answer, because such a target would stay anomalous for ever. If an address
+really does not answer ICMP, for example because of an ACL, `--skip-silent` takes it out of the measurement plan: it
+then counts as missing, not as unreachable.
+
+`--backend live` needs a baseline measured on site: `serve` stops if neither `--learn-rounds` nor `--baseline` is given,
+because the bundle's baseline describes the virtual network. Learning runs at the measurement interval, so 120 rounds
+take 10 minutes. To survive restarts without learning again, save a baseline in a healthy period and reuse it:
+
+```bash
+python -m edgefdl baseline --backend live --topo runs/site/topology.yaml --rounds 120 -o runs/site/site-baseline.json
+python -m edgefdl serve --model runs/site/model.pt --backend live --infer-state --baseline runs/site/site-baseline.json
+```
+
+This flow was run end to end on the sample in `configs/intake_demo`: `intake` from the form and the three vendor
+configurations, a short `pipeline` on the simulator, a lab network with the same addresses, then `preflight` and
+`serve --backend live` with the bundle whose topology still carries names such as `GigabitEthernet0/0/9`. Faults on L2
+and L3: 10 of 10 right with `--lsdb-cmd`, 8 of 10 with `--infer-state`, whose two misses are route drifts that move a
+single monitored path on this four-device network, too little to infer a cost from
+([`results/live_intake.json`](../results/live_intake.json)).
+
+### What changes on the devices
+
+Nothing. The backend's executor allows only `ping`, `traceroute`, `iperf3` and the two packet-train scripts of
+[`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), and refuses everything else, so `ip`, `tc`, `sysctl` and
+`vtysh` cannot run even by mistake. `inject` and `clear` raise an error, `POST /api/inject` and `/api/clear` answer 403,
+and the dashboard hides the fault-injection panel. The remediation commands in an alarm are text for the operator.
+
+Three things can reach a device, each of them under your control: the probes themselves; `--lsdb-cmd`, which is your
+own command, so give it a read-only account; and with `--endpoints`, short-lived `ping`, `iperf3` and `python3` processes
+on the machines you list, again through your own command prefix. A device-native NQA / IP SLA probe for a blind link
+would be a configuration change, and EdgeFDL does not make it; `live` does not read such probes yet.
+
+### ICMP permissions
+
+| Tool | Needs | Check and fix |
+|---|---|---|
+| `ping` | Works for ordinary users on mainstream distributions (setuid, file capability or `net.ipv4.ping_group_range`) | `preflight` reports it |
+| `traceroute -I` | Root, `CAP_NET_RAW`, or a group inside `net.ipv4.ping_group_range`. Without them it prints `You do not have enough privileges to use this traceroute method.` and `preflight` fails | `sudo setcap cap_net_raw+ep "$(readlink -f "$(command -v traceroute)")"` (verified in the lab container on `traceroute` 2.1.2 with `ping_group_range` closed, as user `nobody`) |
+| Deep probes at the endpoints | 100 pings at 10 ms. Older `iputils` refuse intervals under 200 ms for ordinary users (`ping: cannot flood; minimal interval allowed for user is 200ms`, seen on Ubuntu 20.04) | An endpoint account with `CAP_NET_RAW` on `ping`, or root |
+
+The service itself needs no root and should not run as root. `--lsdb-cmd` runs with the privileges of the service
+user.
+
+### What each input adds
+
+| Input | Gives | Without it |
+|---|---|---|
+| (always) `ping`, `traceroute` | Connectivity, delay, loss and jitter per link by tomography; paths | |
+| `--infer-state` | Link-down and cost state derived from the same pings and traceroutes | The type of a link-down alarm and every route-drift alarm suffer, see below |
+| `--lsdb-cmd 'CMD'` | The real OSPF adjacency and cost of every link, every round | The same; takes precedence over `--infer-state` |
+| `--endpoints FILE` | Packet-train bandwidth estimates, deep probes, the blind link's probe target | No bandwidth alarms, no deep probes, blind links unobserved |
+
+**`--lsdb-cmd`** is a shell command that prints the JSON of FRR's `show ip ospf database router json`, the variant with
+the links; plain `show ip ospf database json` has only a summary, and `preflight` says so. For example, over a read-only
+account with a shared SSH connection, so that the 5 s reads do not each open one:
+
+```bash
+--lsdb-cmd "ssh -o BatchMode=yes -o ControlMaster=auto -o ControlPath=~/.ssh/efl-%r@%h -o ControlPersist=10m \
+    edgefdl-ro@10.255.0.1 vtysh -c \"'show ip ospf database router json'\""
+```
+
+Point-to-point and broadcast OSPF networks are both understood (checked on FRR's own output,
+[`results/live_trace_check.json`](../results/live_trace_check.json)). The command has 4 s; a failure, a time-out or an answer
+without router LSAs of the topology makes that round's LSDB missing, never "all links down", and it is counted in
+`measurement.lsdb_fails` of `/api/status`. Only FRR's JSON is parsed: for Huawei, H3C or Cisco routers, the command has
+to translate `display ospf lsdb router` or `show ip ospf database router` into it, and no such adapter ships yet. That
+is why `--infer-state` exists.
+
+**`--endpoints`** names a small YAML file listing the devices that can run probes and how to reach them. Each value is a
+command prefix that receives one shell command line as its last argument:
+
+```yaml
+endpoints:
+  agg1: ssh -o BatchMode=yes probe@10.255.0.2
+  acc1: ssh -o BatchMode=yes probe@10.255.0.4
+```
+
+Only links with both ends listed get packet trains and deep probes, the EMS counting as listed; a listed device can
+also start the blind link's probe. Endpoints need `python3` and `iperf3`, and must pass the UDP ports below.
+
+### What is lost without them
+
+Measured on the simulator with the released model, 84 scenarios and 24 h of transient noise, removing one input at a
+time ([`results/live_missing.json`](../results/live_missing.json), `scripts/live_missing.py`):
+
+| Inputs | Right type and link, of 84 | Link down /15 | Delay /15 | Loss /15 | Jitter /15 | Bandwidth /15 | Route drift /9 | False alarms in 24 h |
+|---|---|---|---|---|---|---|---|---|
+| All inputs (control) | 84 | 15 | 15 | 15 | 15 | 15 | 9 | 0 |
+| No LSDB | 60 | 0 | 15 | 15 | 15 | 15 | 0 | 0 |
+| No endpoints | 69 | 15 | 15 | 15 | 15 | 0 | 9 | 3 |
+| Ping and traceroute only | 51 | 9 | 14 | 14 | 14 | 0 | 0 | 3 |
+| Ping and traceroute with `--infer-state` | 63 | 15 | 14 | 14 | 14 | 0 | 6 | 3 |
+
+Every row but the first traces 5 targets per round, as the backend does. Same seed and scenarios as the self-test; on
+this run the control row took a mean of 30 s to alarm a link-down fault. A false alarm here is an alarm in the noise
+run, with no fault present.
+
+Feature by feature, this is what the model and the engine do when an input is absent.
+
+**Without an LSDB source:**
+
+- The features `adj_down`, `cost_ratio` and `frac_adj_down` stay 0. The model was trained with them. With both interfaces
+  unreachable and no adjacency change it does not say "link down" reliably: on the simulator it said "bandwidth" on the
+  right link in 15 of 15 cases where packet trains exist; without them it said "loss" in 6 of 15, and on the real stack
+  in 5 of 6.
+- The detector has no control-plane trigger, so a route drift that leaves RTTs inside their thresholds never wakes the
+  agent. Drift evidence falls back to the measured paths.
+- A device-down alarm needs the adjacencies, so a dead router gives link alarms rather than one device alarm.
+- `traversal`, the model of which targets cross which links, stays on the baseline routes, so the residual logic for
+  concurrent faults does not see reroutes. Its results in [Results](results.md#44-multiple-faults) do not apply.
+- `link_state` in `/api/status` is empty, and `measure_log.csv` has no `lsdb` rows.
+
+**With `--infer-state`,** the backend fills these features from the data plane (`StateInference` in
+[`edgefdl/vnet/live.py`](../edgefdl/vnet/live.py)): a link counts as down when both its interface addresses stop
+answering for 2 rounds while one of its devices still answers on another address, so a region cut off behind a fault does
+not turn into many down links; a router whose neighbours all see this gets the device-down alarm. A cost change is
+inferred when at least 2 targets move to a path of a different total cost, since moving between equal-cost paths means
+nothing: it tries the OSPF cost factors of the fault model on the links those paths left or entered, and keeps the link
+and factor that agree best with all measured paths, as SPF on the topology computes them. This is an estimate. The inferred cost is a grid value, two links can explain the same paths
+(on the access ring, L8 can be read as L5 and L9 as L7), and it relies on the topology's costs being right, which the
+path comparison of `preflight` puts to the test. In `measure_log.csv` the `lsdb` rows then hold the inferred values.
+
+**Without endpoints:**
+
+- No packet trains: a bandwidth reduction is invisible, because pings do not show it. Bandwidth conclusions are masked
+  so that the model cannot raise an alarm that nothing could confirm or clear.
+- No deep probes: their actions are masked on those links, and the agent decides among its diagnoses. A deep probe is
+  never faked: encoded as "no answer", it would mean the link is down. Transients that a deep probe would have dismissed
+  can get through: 3 false alarms in 24 h in the runs above, against 0 with endpoints.
+- A loss alarm on a link crossed by a single path clears more slowly, since a deep probe no longer confirms the
+  recovery; in the simulator run, one such alarm (L9) had not cleared 60 rounds after the repair.
+- Blind links are unobserved. A blind link is one that no EMS probe crosses; its delay, loss and jitter faults raise no
+  alarm (L3 in the demo topology). Its link-down is still seen, from its interface addresses.
+
+### Rate of probing
+
+The default plan with a 5 s interval sends, per round, 5 echo requests to each of the 36 addresses measured from the
+EMS and one traceroute to each of 5 targets. Measured on the demo topology
+([`results/live_trace_check.json`](../results/live_trace_check.json), 8 rounds per cell;
+the byte count uses the accounting of the measurement log):
+
+| Router ICMP limit | Traceroutes per round | Round takes | Complete paths per round | Probe traffic |
+|---|---|---|---|---|
+| None | all 36 | 0.97 s | 36 | 50.1 KB per round, 80 kbit/s |
+| None | 5 | 0.85 s | 5 | 37.2 KB per round, 60 kbit/s |
+| Linux default (1000 ms) | all 36 | 7.71 s | 11.9 | 61.8 KB per round, 99 kbit/s |
+| Linux default (1000 ms) | 5, the default | 0.87 s | 4.9 | 37.2 KB per round, 60 kbit/s |
+
+That is 0.06% of a 100 Mbit/s link at the default, even if all of it crossed that link. Baseline learning runs at
+the same rate. `--lsdb-cmd` adds one read per round. With endpoints, each round adds packet trains on 3 links, and a deep
+probe adds 100 pings and a 1 s `iperf3` run at no more than 30% of the link's bandwidth.
+
+Traceroutes rotate on purpose. Routers rate-limit ICMP time-exceeded messages, Linux by default to about one per second
+per destination with a small burst, and the first router sits on every path; the table shows what tracing everything at
+once does then. Hence `--trace-per-round`, by default one per second of measurement interval, 5 per round. Every target is traced
+about every 8 rounds, and a target without a current path counts as "path unknown", not "path changed". Set
+`--trace-per-round 0` to trace everything each round if your routers do not limit these messages.
+
+`--interval` scales all of this: a 10 s interval halves the probe rate and doubles the time to alarm. All addresses are
+pinged at the same moment, 5 packets each, 0.2 s apart, and then the network is left alone until the next round.
+
+### Firewall notes
+
+Open between the EMS and every address of the topology:
+
+| Traffic | Direction | Needed for |
+|---|---|---|
+| ICMP echo request and reply | EMS to device, and back | All measurement |
+| ICMP time-exceeded | Device to EMS | Paths. If blocked, paths stay unknown: `preflight` notes it, and reroutes and drift are seen only through RTT and the LSDB |
+| SSH or whatever `--lsdb-cmd` uses | EMS to the LSDB source | The LSDB |
+| UDP 5300+ (packet trains), TCP and UDP 5400+ (`iperf3`) | Between the two ends of a link | Endpoints only: port 5300 + 4 × link index + 0…3, port 5400 + link index |
+
+Control-plane policing on routers may drop part of the pings. That is background loss, which the baseline learns up to
+5%; if it appears later, the engine relearns it ([On-site baseline learning](#on-site-baseline-learning)).
+
+### Failure modes
+
+| What happens | What you see | What to do |
+|---|---|---|
+| An address does not answer at start | `preflight` lists it; `serve` stops | Fix the address or the ACL, or use `--skip-silent` |
+| `traceroute` lacks privileges or is another implementation | `preflight` fails with the reason | See [ICMP permissions](#icmp-permissions) |
+| Routers do not answer TTL-exceeded, or hide some hops | `preflight` notes "path incomplete"; those paths stay unknown, never "changed" | Open time-exceeded to the EMS; add `--lsdb-cmd` |
+| A hop belongs to a device missing from the topology | The hop is ignored, the path keeps the devices it knows | Add the device, retrain |
+| `--lsdb-cmd` fails or times out | One line on standard error at the first failure, `measurement.lsdb_fails` rises, those rounds have no LSDB; the features keep the last value and the engine goes on | Fix the command; the next good read resumes |
+| An endpoint is unreachable | That estimate is missing; `preflight` reports it | Fix the prefix; estimates resume |
+| The EMS uplink fails, or the EMS is isolated | All targets stop answering; one alarm on the uplink at best. Faults behind the uplink cannot be told from it | Alarm sinks on another path; check the EMS |
+| A fault was present while the baseline was learned | It becomes part of the baseline and raises no alarm | Learn again in a healthy period, or use a saved `--baseline` |
+| The topology changes (new device, readdressing, new costs) | New addresses are unknown, old ones go silent | Run `intake` and the pipeline again ([Retrain](#on-site-baseline-learning)) |
+| Equal-cost paths flip | A target changes path. `--infer-state` ignores moves between paths of equal cost, and each target is traced about once in 8 rounds, so one flip does not reach the detector's 3 of 6 rounds | Nothing, unless alarms name such a link |
+| OSPF timers are slower than the lab's | The lab uses hello 1 s, dead 4 s. With the usual 10 s and 40 s, an adjacency lost without a carrier change reaches the LSDB only after the dead interval; pings show the outage at once | Nothing; `--infer-state` does not depend on the timers |
+
+### Validation
+
+`scripts/live_blackbox.py` tests the backend as a black box on a real protocol stack, the demo topology on network
+namespaces with FRR OSPF and `tc`. One process builds the network and exits, `serve --backend live` runs in the EMS's
+namespace, and a separate script applies each fault with `tc`, `ip` and `vtysh` directly on the device namespaces and
+reads the outcome from `alarm_log.csv`. The serving process has no fault object and no access to the injected state:
+`ground_truth` stayed empty and `POST /api/inject` answered 403. Routers ran at the Linux default ICMP rate limit, faults
+were those of the self-test, 5 s rounds, baseline learned over 40 rounds. Raw results:
+[`results/live_blackbox.json`](../results/live_blackbox.json).
+
+| Inputs | Right type and link | Link down | Delay | Loss | Jitter | Bandwidth | Route drift | Device down | Mean time to alarm | Alarms outside faults |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Ping and traceroute only | 19/36 | 1/6 | 6/6 | 6/6 | 6/6 | 0/6 | 0/4 | 0/2 | 35.7 s | 0 |
+| `--infer-state` | 28/36 | 6/6 | 6/6 | 5/6 | 6/6 | 0/6 | 3/4 | 2/2 | 35.1 s | 0 |
+| `--lsdb-cmd` | 30/36 | 6/6 | 6/6 | 6/6 | 6/6 | 0/6 | 4/4 | 2/2 | 35.3 s | 0 |
+| `--lsdb-cmd` and `--endpoints` | 34/34 | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 | 4/4 | not run | 38.7 s | 0 |
+
+"Alarms outside faults" counts alarms raised while no fault was applied: a 10-minute idle run per row and 20 s before each
+fault. `results/live_blackbox.json` lists every scenario with the alarmed type and link, the time to alarm and the time to
+clear. Bandwidth faults raise no alarm without packet trains, by design. Time to alarm is the mean over the alarms that
+were right. The wrong alarms: without an LSDB source, 5 of 6 link-down faults are reported as loss on the right link, a device down as
+loss on one of its links, and a route drift as delay or not at all. With `--infer-state`, one 15% loss on L1 was reported as route drift on L1, and the route
+drift on L8 as route drift on L5. This network is virtual: it has real OSPF, forwarding and queues, but not the devices, optics or traffic of a
+production network, and `live` has not yet run on physical devices.
+
 ## 5. Integrations
 
 ### Alarm sinks

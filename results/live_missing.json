@@ -82,7 +82,7 @@
    },
    "not_correct": [],
    "not_cleared_within_60_rounds": [],
-   "wall_s": 88.4
+   "wall_s": 88.0
   },
   "no_lsdb": {
    "noise": {
@@ -270,7 +270,7 @@
     }
    ],
    "not_cleared_within_60_rounds": [],
-   "wall_s": 87.8
+   "wall_s": 85.4
   },
   "no_ends": {
    "noise": {
@@ -413,7 +413,7 @@
     }
    ],
    "not_cleared_within_60_rounds": [],
-   "wall_s": 81.3
+   "wall_s": 80.0
   },
   "ping_only": {
    "noise": {
@@ -652,7 +652,7 @@
      "pred": "L9 loss"
     }
    ],
-   "wall_s": 80.2
+   "wall_s": 77.8
   },
   "infer": {
    "noise": {
@@ -665,34 +665,34 @@
     "engine_errors": 0
    },
    "scenarios": 84,
-   "correct": 62,
+   "correct": 63,
    "summary": {
     "链路中断": {
      "n": 15,
      "type_acc": 1.0,
      "joint_acc": 1.0,
-     "mean_time_to_alarm_s": 34.7,
+     "mean_time_to_alarm_s": 34.0,
      "max_time_to_alarm_s": 40.0
     },
     "时延劣化(RTT异常)": {
      "n": 15,
      "type_acc": 0.9333,
      "joint_acc": 0.9333,
-     "mean_time_to_alarm_s": 35.7,
-     "max_time_to_alarm_s": 40.0
+     "mean_time_to_alarm_s": 34.6,
+     "max_time_to_alarm_s": 35.0
     },
     "丢包劣化": {
      "n": 15,
      "type_acc": 0.9333,
      "joint_acc": 0.9333,
-     "mean_time_to_alarm_s": 38.2,
-     "max_time_to_alarm_s": 80.0
+     "mean_time_to_alarm_s": 40.4,
+     "max_time_to_alarm_s": 90.0
     },
     "抖动劣化": {
      "n": 15,
      "type_acc": 0.9333,
      "joint_acc": 0.9333,
-     "mean_time_to_alarm_s": 32.9,
+     "mean_time_to_alarm_s": 33.6,
      "max_time_to_alarm_s": 35.0
     },
     "带宽劣化": {
@@ -704,17 +704,17 @@
     },
     "路由漂移": {
      "n": 9,
-     "type_acc": 0.7778,
-     "joint_acc": 0.5556,
-     "mean_time_to_alarm_s": 45.0,
+     "type_acc": 0.8889,
+     "joint_acc": 0.6667,
+     "mean_time_to_alarm_s": 42.2,
      "max_time_to_alarm_s": 60.0
     },
     "性能劣化": {
      "n": 60,
      "type_acc": 0.7,
      "joint_acc": 0.7,
-     "mean_time_to_alarm_s": 35.6,
-     "max_time_to_alarm_s": 80.0
+     "mean_time_to_alarm_s": 36.2,
+     "max_time_to_alarm_s": 90.0
     }
    },
    "not_correct": [
@@ -754,6 +754,11 @@
      "pred": "无告警"
     },
     {
+     "link": "L4",
+     "type": "route_drift",
+     "pred": "L4 delay"
+    },
+    {
      "link": "L5",
      "type": "bandwidth",
      "pred": "无告警"
@@ -762,11 +767,6 @@
      "link": "L6",
      "type": "bandwidth",
      "pred": "无告警"
-    },
-    {
-     "link": "L6",
-     "type": "route_drift",
-     "pred": "L6 delay"
     },
     {
      "link": "L7",
@@ -799,11 +799,6 @@
      "pred": "无告警"
     },
     {
-     "link": "L10",
-     "type": "route_drift",
-     "pred": "L12 loss"
-    },
-    {
      "link": "L11",
      "type": "bandwidth",
      "pred": "无告警"
@@ -830,7 +825,7 @@
     }
    ],
    "not_cleared_within_60_rounds": [],
-   "wall_s": 83.7
+   "wall_s": 85.9
   }
  }
 }

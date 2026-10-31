@@ -1,0 +1,248 @@
+{
+ "conditions": {
+  "network": "demo topology on network namespaces, FRR OSPF, tc netem + tbf",
+  "rounds_per_cell": 8,
+  "targets": 36,
+  "round_interval_s": 5
+ },
+ "cells": [
+  {
+   "icmp_ratelimit_ms": 0,
+   "trace_per_round": "all",
+   "rounds": [
+    {
+     "round_s": 1.23,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 51264
+    },
+    {
+     "round_s": 0.84,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 49784
+    },
+    {
+     "round_s": 0.84,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 49784
+    },
+    {
+     "round_s": 0.84,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 49784
+    },
+    {
+     "round_s": 1.16,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 50228
+    },
+    {
+     "round_s": 1.18,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 50672
+    },
+    {
+     "round_s": 0.84,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 49784
+    },
+    {
+     "round_s": 0.85,
+     "traced": 36,
+     "paths_complete": 36,
+     "probe_bytes": 49784
+    }
+   ],
+   "mean_round_s": 0.97,
+   "mean_paths_complete": 36.0,
+   "mean_probe_bytes": 50136
+  },
+  {
+   "icmp_ratelimit_ms": 0,
+   "trace_per_round": 5,
+   "rounds": [
+    {
+     "round_s": 0.88,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 36464
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37204
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37796
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37204
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37056
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37944
+    },
+    {
+     "round_s": 0.86,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37500
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 36760
+    }
+   ],
+   "mean_round_s": 0.85,
+   "mean_paths_complete": 5.0,
+   "mean_probe_bytes": 37241
+  },
+  {
+   "icmp_ratelimit_ms": 1000,
+   "trace_per_round": "all",
+   "rounds": [
+    {
+     "round_s": 6.47,
+     "traced": 36,
+     "paths_complete": 14,
+     "probe_bytes": 60588
+    },
+    {
+     "round_s": 7.46,
+     "traced": 36,
+     "paths_complete": 12,
+     "probe_bytes": 62216
+    },
+    {
+     "round_s": 7.45,
+     "traced": 36,
+     "paths_complete": 12,
+     "probe_bytes": 61920
+    },
+    {
+     "round_s": 8.45,
+     "traced": 36,
+     "paths_complete": 11,
+     "probe_bytes": 61920
+    },
+    {
+     "round_s": 8.46,
+     "traced": 36,
+     "paths_complete": 11,
+     "probe_bytes": 61920
+    },
+    {
+     "round_s": 7.42,
+     "traced": 36,
+     "paths_complete": 12,
+     "probe_bytes": 61920
+    },
+    {
+     "round_s": 7.49,
+     "traced": 36,
+     "paths_complete": 12,
+     "probe_bytes": 62216
+    },
+    {
+     "round_s": 8.44,
+     "traced": 36,
+     "paths_complete": 11,
+     "probe_bytes": 61476
+    }
+   ],
+   "mean_round_s": 7.71,
+   "mean_paths_complete": 11.9,
+   "mean_probe_bytes": 61772
+  },
+  {
+   "icmp_ratelimit_ms": 1000,
+   "trace_per_round": 5,
+   "rounds": [
+    {
+     "round_s": 1.08,
+     "traced": 5,
+     "paths_complete": 4,
+     "probe_bytes": 36464
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37204
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37796
+    },
+    {
+     "round_s": 0.85,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37204
+    },
+    {
+     "round_s": 0.85,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37056
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37944
+    },
+    {
+     "round_s": 0.84,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 37500
+    },
+    {
+     "round_s": 0.85,
+     "traced": 5,
+     "paths_complete": 5,
+     "probe_bytes": 36760
+    }
+   ],
+   "mean_round_s": 0.87,
+   "mean_paths_complete": 4.9,
+   "mean_probe_bytes": 37241
+  }
+ ],
+ "broadcast_link": {
+  "link": "L4",
+  "link_types_in_lsdb": [
+   "Stub Network",
+   "a Transit Network",
+   "another Router (point-to-point)"
+  ],
+  "parsed_adj_up": true,
+  "parsed_cost": 10.0
+ }
+}

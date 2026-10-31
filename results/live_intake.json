@@ -1,0 +1,568 @@
+{
+ "conditions": {
+  "network": "demo topology on network namespaces, FRR OSPF (hello 1 s, dead 4 s), tc netem + tbf, in a privileged container; net.ipv4.icmp_ratelimit=1000 on the routers",
+  "model": "runs/lab/site/model.pt",
+  "interval_s": 5.0,
+  "learn_rounds": 24,
+  "alarm_timeout_s": 120.0,
+  "clear_timeout_s": 90.0,
+  "settle_s": 20.0,
+  "fault_values": {
+   "link_down": 1.0,
+   "delay": 20.0,
+   "loss": 0.15,
+   "jitter": 15.0,
+   "bandwidth": 0.2,
+   "route_drift": "largest factor that changes a monitored path"
+  },
+  "isolation": "serve ran in the efl-ems namespace as its own process; faults were applied by this script with tc, ip and vtysh directly on the device namespaces; results were read from alarm_log.csv only"
+ },
+ "modes": {
+  "lsdb": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "runs/lab/site/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "24",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final/site/lsdb-L2_L3/logs",
+    "--lsdb-cmd",
+    "vtysh -N efl-core -c 'show ip ospf database router json'"
+   ],
+   "runs": [
+    {
+     "links": "L2,L3",
+     "preflight_seconds": 29.9,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 156,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 9,
+      "alarms_total": 10,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 17.9,
+       "pct_of_min_link": 0.018,
+       "pct_of_uplink": 0.002
+      },
+      "round_ms": 950.8
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 935.3,
+     "probe_kbps": 17.9
+    }
+   ],
+   "rows": [
+    {
+     "link": "L2",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.5,
+     "time_to_clear_s": 13.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.5,
+     "time_to_clear_s": 14.4,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 54.6,
+     "time_to_clear_s": 19.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.3,
+     "time_to_clear_s": 14.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.0,
+     "time_to_clear_s": 14.0,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 55.0,
+     "time_to_clear_s": 14.9,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 35.9,
+     "time_to_clear_s": 18.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.9,
+     "time_to_clear_s": 14.8,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": true,
+     "alarm_type": "route_drift",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.7,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "route_drift L3"
+     ],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 10,
+    "correct": 10,
+    "by_type": {
+     "link_down": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 33.2,
+      "max_time_to_alarm_s": 35.0
+     },
+     "delay": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 44.8,
+      "max_time_to_alarm_s": 55.0
+     },
+     "loss": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 45.2,
+      "max_time_to_alarm_s": 54.6
+     },
+     "jitter": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 29.6,
+      "max_time_to_alarm_s": 29.9
+     },
+     "route_drift": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 34.5,
+      "max_time_to_alarm_s": 34.7
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  },
+  "infer": {
+   "serve_argv": [
+    "ip",
+    "netns",
+    "exec",
+    "efl-ems",
+    "/usr/bin/python3",
+    "-m",
+    "edgefdl",
+    "serve",
+    "--model",
+    "runs/lab/site/model.pt",
+    "--backend",
+    "live",
+    "--learn-rounds",
+    "24",
+    "--interval",
+    "5",
+    "--port",
+    "8460",
+    "--log-dir",
+    "runs/lab/final2/site/infer-L2_L3/logs",
+    "--infer-state"
+   ],
+   "runs": [
+    {
+     "links": "L2,L3",
+     "preflight_seconds": 21.7,
+     "false_alarms_idle": 0,
+     "serve_status": {
+      "round": 182,
+      "backend": "live",
+      "read_only": true,
+      "errors": 0,
+      "suppressed": 17,
+      "alarms_total": 8,
+      "ground_truth": [],
+      "overhead": {
+       "kbps": 18.0,
+       "pct_of_min_link": 0.018,
+       "pct_of_uplink": 0.002
+      },
+      "round_ms": 938.6
+     },
+     "inject_refused": "HTTP 403 {\"error\": \"live 后端只读：不向真实网络注入或清除故障\"}\n",
+     "wall_s": 1058.1,
+     "probe_kbps": 18.0
+    }
+   ],
+   "rows": [
+    {
+     "link": "L2",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 31.4,
+     "time_to_clear_s": 13.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.4,
+     "time_to_clear_s": 14.3,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.2,
+     "time_to_clear_s": 24.2,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L2",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.2,
+     "time_to_clear_s": 14.1,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L2"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L2",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "link_down",
+     "value": 1.0,
+     "alarmed": true,
+     "alarm_type": "link_down",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 44.8,
+     "time_to_clear_s": 13.7,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "link_down L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "delay",
+     "value": 20.0,
+     "alarmed": true,
+     "alarm_type": "delay",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 14.6,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "delay L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "loss",
+     "value": 0.15,
+     "alarmed": true,
+     "alarm_type": "loss",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 34.8,
+     "time_to_clear_s": 19.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "loss L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "jitter",
+     "value": 15.0,
+     "alarmed": true,
+     "alarm_type": "jitter",
+     "alarm_link": "L3",
+     "type_ok": true,
+     "link_ok": true,
+     "time_to_alarm_s": 29.6,
+     "time_to_clear_s": 14.5,
+     "cleared": true,
+     "n_alarms": 1,
+     "all_alarms": [
+      "jitter L3"
+     ],
+     "probes_used": 0
+    },
+    {
+     "link": "L3",
+     "type": "route_drift",
+     "value": 30.0,
+     "alarmed": false,
+     "alarm_type": null,
+     "alarm_link": null,
+     "type_ok": false,
+     "link_ok": false,
+     "time_to_alarm_s": null,
+     "time_to_clear_s": null,
+     "cleared": false,
+     "n_alarms": 0,
+     "all_alarms": [],
+     "probes_used": 0
+    }
+   ],
+   "summary": {
+    "scenarios": 10,
+    "correct": 8,
+    "by_type": {
+     "link_down": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 38.1,
+      "max_time_to_alarm_s": 44.8
+     },
+     "delay": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 34.6,
+      "max_time_to_alarm_s": 34.8
+     },
+     "loss": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 34.5,
+      "max_time_to_alarm_s": 34.8
+     },
+     "jitter": {
+      "n": 2,
+      "alarmed": 2,
+      "correct": 2,
+      "mean_time_to_alarm_s": 36.9,
+      "max_time_to_alarm_s": 44.2
+     },
+     "route_drift": {
+      "n": 2,
+      "alarmed": 0,
+      "correct": 0,
+      "mean_time_to_alarm_s": null,
+      "max_time_to_alarm_s": null
+     }
+    },
+    "false_alarms_idle": 0
+   }
+  }
+ },
+ "note": "Debian 12 container edgefdl-lab-torch: Python 3.11.2, PyTorch 2.9.1+cpu, FRR 8.4.4, traceroute 2.1.2, iputils 20221126; Linux 5.15.0-139 on 2 x Xeon Gold 6336Y. Model built from configs/intake_demo with edgefdl intake and edgefdl pipeline --n 12000 --iters 4000 (joint accuracy 98.12% on its own 4,000-sample test set); fabric built from a copy of the topology with Linux interface names and the same addresses; the served bundle keeps the vendor interface names."
+}
