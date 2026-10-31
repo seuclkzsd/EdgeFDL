@@ -452,8 +452,10 @@ class LiveFailedProbeTest(unittest.TestCase):
     """探测没跑成是缺测，不是"没有应答"：后者是链路中断的证据。"""
 
     def test_ping_outside_rc_0_1_is_missing(self):
+        stats = PING_LOST.format(ip="10.0.0.1")                               # 有统计行也不算：返回码说明它没跑完
         for r in ((2, "ping: cannot flood; minimal interval allowed for user is 200ms"), (124, ""), (127, ""), (255, ""),
-                  (1, "ssh: something printed by the prefix"), FileNotFoundError("nosuch")):
+                  (2, stats), (124, stats), (255, stats), (1, "ssh: something printed by the prefix"),
+                  FileNotFoundError("nosuch")):
             b, _ = failing(lambda argv: r)
             st = b._ping("ems", "10.0.0.1", "t", 5, 0.2)
             self.assertEqual((st.sent, st.recv), (0, 0), r)
@@ -779,15 +781,29 @@ class LiveEngineTest(unittest.TestCase):
     def test_recheck_keeps_the_alarm_when_the_probe_did_not_run(self):
         with tempfile.TemporaryDirectory() as d:
             eng, b = self.engine(d)
-            a = dict(alarm_id="x", fault_type="bandwidth", link_id="L4")
+            a = dict(alarm_id="x", fault_type="loss", link_id="L4")           # "无应答"对丢包告警是继续保持的证据
             eng.alarms, eng._trk, eng.noprobe = [a], {"x": dict(probed=0)}, []
             with mock.patch.object(eng.backend, "deep_probe", create=True,
                                    return_value=DeepProbe("L4", 0, 0, float("nan"), float("nan"), float("nan"))), \
-                    mock.patch.object(eng, "_clear", side_effect=AssertionError("不应恢复")):
+                    mock.patch.object(eng, "_clear", side_effect=AssertionError("不应恢复")), \
+                    mock.patch.object(eng, "_reset_trk", side_effect=AssertionError("不应当作证据")):
                 eng._recheck_probe("x", "L4")
             eng.alarms = []
             eng.stop()
         self.assertEqual(eng.extra_probes, 1)
+
+    def test_a_bundle_does_not_set_the_probe_load_of_serve_on_live(self):
+        from edgefdl import cli
+        real = cli.load_bundle
+
+        def hostile(path):
+            ag, topo, base, _, meta = real(path)
+            return ag, topo, base, MeasurePlan(deep_iperf_s=3600.0, deep_iperf_rate_ratio=10.0, ping_size=65000), meta
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(cli, "load_bundle", hostile), \
+                contextlib.redirect_stderr(io.StringIO()):
+            eng, _, b = cli.build_engine(MODEL, "live", d, cli.argparse.Namespace())
+            eng.stop()
+        self.assertEqual((b.plan, eng.plan), (MeasurePlan(), MeasurePlan()))
 
     def test_masked_actions(self):
         from edgefdl.agent.ddqn import K
