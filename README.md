@@ -153,7 +153,7 @@ alarms per day.
 
 EdgeFDL is behind under ICMP rate limiting (95.2% and 96.9% against 97.6%), on false alarms when every transient lasts
 15 s (9.6 per day against 0.0), and on time to alarm for link down, route drift and bandwidth, where a short rule on the
-LSDB or the bandwidth estimate takes 10 s, 10 s and 40 s against 30 s, 30 s and 57 s. Full tables, parameters and what
+LSDB or the bandwidth estimate takes 10 s, 10 s and 40 s against 30 s, 30 s and 60 s (standard conditions). Full tables, parameters and what
 this does not cover: [docs/comparison.md](docs/comparison.md#measured-comparison).
 
 **Capabilities**, from public documentation. The tools are mature and much broader in scope; EdgeFDL complements them

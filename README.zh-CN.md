@@ -131,7 +131,7 @@ FRR、iperf3、traceroute 和 iproute2；设置 `EDGEFDL_APT_MIRROR` 可使用�
 ![三列，每行一种方法。左：标准条件下各故障类型的链路和类型准确率。中：六种测试条件下的准确率。右：同样条件下每模拟日的误报数](docs/images/compare.png)
 
 EdgeFDL 不占优的地方：ICMP 限速时（95.2% 和 96.9%，基线 97.6%）；每次瞬态都持续 15 s 时的误报（每天 9.6 条，基线 0.0）；链路中断、路由漂移和带宽的告警时间
-（读 LSDB 或带宽估计的短规则分别为 10 s、10 s、40 s，EdgeFDL 为 30 s、30 s、57 s）。完整表格、参数和本实验不覆盖的内容见 [docs/comparison.md](docs/comparison.md#measured-comparison)。
+（读 LSDB 或带宽估计的短规则标准条件下分别为 10 s、10 s、40 s，EdgeFDL 为 30 s、30 s、60 s）。完整表格、参数和本实验不覆盖的内容见 [docs/comparison.md](docs/comparison.md#measured-comparison)。
 
 **能力对比**依据各项目的公开文档。这些工具成熟且覆盖面广得多；EdgeFDL 是对它们的补充，告警通过 Syslog、Webhook 或 Prometheus 送入这些平台。
 
