@@ -150,16 +150,17 @@ TS=getattr(socket,'SO_TIMESTAMPNS',35)
 s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.bind(('0.0.0.0',int(sys.argv[1])))
 try: s.setsockopt(socket.SOL_SOCKET,TS,1)
 except OSError: pass
-s.settimeout(float(sys.argv[3]));n=int(sys.argv[2]);ts=[];sz=0
+s.settimeout(float(sys.argv[3]));n=int(sys.argv[2]);ts=[];seq=[];sz=0
 print('ready',flush=True)
 try:
   while len(ts)<n:
     b,anc,_,_=s.recvmsg(65535,64);t=None
     for lv,ty,d in anc:
       if lv==socket.SOL_SOCKET and ty==TS: sec,ns=struct.unpack('qq',d[:16]);t=sec+ns*1e-9
-    ts.append(t if t is not None else time.time());sz=len(b)
+    ts.append(t if t is not None else time.time());sz=len(b);seq.append(struct.unpack('!I',b[:4])[0])
     s.settimeout(0.5)
 except socket.timeout: pass
+print('seq',' '.join(map(str,seq)),flush=True)
 print(len(ts),sz,' '.join('%.9f'%t for t in ts),flush=True)
 """
 
@@ -207,20 +208,40 @@ def train_capacity(ts: Sequence[float], size: int) -> float:
     return train_estimate(ts, size)[0]
 
 
+TRAIN_MAX_REORDER = 0.1
+
+
+def train_reordered(seq: Sequence[int], max_frac: float = TRAIN_MAX_REORDER) -> bool:
+    """到达顺序与发送顺序明显不一致（相邻两包逆序的比例超过 max_frac）。
+
+    包列法的前提是瓶颈先进先出，到达间隔才等于单包服务时间。逐包独立的抖动远大于单包服务时间时包列整体被打散：
+    到达时间近似一段连续分布的采样，滑动窗口仍可能彼此一致，train_estimate 的一致性检查放行，算出的却是抖动幅度
+    （千兆链路 15 ms 抖动时约 11 Mbps）而不是瓶颈速率。乱序不受抖动分布形状影响，是这种情形的直接判据。"""
+    if len(seq) < 2:
+        return False
+    inv = sum(1 for a, b in zip(seq, seq[1:]) if b < a)
+    return inv > max_frac * (len(seq) - 1)
+
+
 def parse_train(text: str) -> Tuple[float, bool]:
-    """接收端输出 'got size t1 t2 ...'，返回 (估计带宽 Mbps, 是否可信)；样本不足返回 (nan, False)。"""
+    """接收端输出可选的 'seq s1 s2 ...' 行与 'got size t1 t2 ...' 行，返回 (估计带宽 Mbps, 是否可信)；
+    样本不足返回 (nan, False)，到达明显乱序时估计值照常给出、标记为不可信。"""
     lines = [l for l in text.splitlines() if l and not l.startswith("ready")]
+    seq = [l for l in lines if l.startswith("seq")]
+    lines = [l for l in lines if not l.startswith("seq")]
     if not lines:
         return NAN, False
     parts = lines[-1].split()
     try:
         got, size = int(parts[0]), int(parts[1])
         ts = [float(x) for x in parts[2:]]
+        order = [int(x) for x in seq[-1].split()[1:]] if seq else []
     except (ValueError, IndexError):
         return NAN, False
     if got < 4 or len(ts) < 4:
         return NAN, False
-    return train_estimate(ts, size)
+    bw, clean = train_estimate(ts, size)
+    return bw, clean and not train_reordered(order)
 
 
 def deep_probe_from(link: str, ping_text: str, iperf_text: str, ping_sent: int,
