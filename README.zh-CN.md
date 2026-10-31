@@ -1,4 +1,6 @@
-# EdgeFDL：边缘网络故障自主定位——在网管服务器上指出故障链路与故障类型，一个故障一条告警，对设备只读
+# EdgeFDL：边缘网络故障自主定位系统
+
+**在网管服务器上指出故障链路与故障类型，一个故障一条告警，对设备只读。**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/seuclkzsd/EdgeFDL/actions/workflows/ci.yml/badge.svg)](https://github.com/seuclkzsd/EdgeFDL/actions/workflows/ci.yml)
@@ -150,7 +152,7 @@ EdgeFDL 以 [Apache License 2.0](LICENSE) 发布；署名与第三方组件见 [
 ```bibtex
 @software{edgefdl,
   author  = {seuclkzsd},
-  title   = {EdgeFDL: autonomous link-level fault detection and localization for edge networks},
+  title   = {EdgeFDL: Edge-network Fault Detection and Localization},
   year    = {2026},
   version = {0.1.1},
   url     = {https://github.com/seuclkzsd/EdgeFDL},

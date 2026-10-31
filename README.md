@@ -1,4 +1,7 @@
-# EdgeFDL: names the faulty link and the fault type in an edge network from its management server — one alarm per fault, read-only
+# EdgeFDL — Edge-network Fault Detection and Localization
+
+**Names the faulty link and the fault type in an edge network from its management server: one alarm per fault,
+read-only towards the devices.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/seuclkzsd/EdgeFDL/actions/workflows/ci.yml/badge.svg)](https://github.com/seuclkzsd/EdgeFDL/actions/workflows/ci.yml)
@@ -166,7 +169,7 @@ Please cite EdgeFDL as described in [CITATION.cff](CITATION.cff) ("Cite this rep
 ```bibtex
 @software{edgefdl,
   author  = {seuclkzsd},
-  title   = {EdgeFDL: autonomous link-level fault detection and localization for edge networks},
+  title   = {EdgeFDL: Edge-network Fault Detection and Localization},
   year    = {2026},
   version = {0.1.1},
   url     = {https://github.com/seuclkzsd/EdgeFDL},

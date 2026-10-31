@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use EdgeFDL in research or engineering reports, please cite it as below."
 type: software
-title: "EdgeFDL: autonomous link-level fault detection and localization for edge networks"
+title: "EdgeFDL: Edge-network Fault Detection and Localization"
 abstract: >-
   EdgeFDL locates faulty links in edge networks (campus, branch and factory networks) from the
   network-management server, read-only towards the devices and without production fault data.
