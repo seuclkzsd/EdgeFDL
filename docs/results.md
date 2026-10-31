@@ -37,7 +37,7 @@ These conditions apply to every table on this page unless a section states other
 
 | Item | Value |
 |---|---|
-| Version | Model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters), trained and measured with EdgeFDL 0.1.0. Release 0.1.1 reproduces the test-set evaluations and the baseline byte for byte, the self-test's long run and 84 scenarios with identical outcomes (latency, CPU and memory vary with the machine's load) and the robustness suite apart from its run time. Release 0.1.2 reproduces `results/eval_test.json` byte for byte and the self-test and robustness suite with the same outcomes |
+| Version | Model bundle `results/model.pt` (version string `ddqn-20261030-0116`, 36,041 parameters), trained and measured with EdgeFDL 0.1.0. Release 0.1.1 reproduces the test-set evaluations and the baseline byte for byte, the self-test's long run and 84 scenarios with identical outcomes (latency, CPU and memory vary with the machine's load) and the robustness suite apart from its run time. Release 0.1.2 reproduces `results/eval_test.json` byte for byte and the self-test and robustness suite with the same outcomes Release 0.2.0 reproduces them: `eval_test.json` byte for byte, and the self-test and the robustness suite with the same outcomes (latency, CPU, memory and run time vary with the machine's load) |
 | Topology | [`configs/demo_topology.yaml`](../configs/demo_topology.yaml): 12 devices (routers `core`, `agg1`, `agg2`, `acc1`–`acc4`; hosts `h1`–`h4`; the network-management server `ems`), 15 links L1–L15 (1000 and 100 Mbps), Huawei/H3C vendor mix |
 | Monitored targets | 37: 29 interface addresses (25 router interfaces, 4 host addresses), 7 router loopbacks, and 1 NQA target that coverage planning adds for the backup link L3, which no EMS-side probe crosses |
 | Measurement plan | One round every 5 s: 5 pings to every target, traceroute paths, packet-train bandwidth estimate on 3 links per round, OSPF LSDB; detection window of 6 rounds |
@@ -309,7 +309,7 @@ no background traffic. Each fault type was tested at one size on one topology. T
 not been repeated on the stack, and heavy loss (≥ 30%), which makes OSPF adjacencies flap, is not among these scenarios.
 Hardware deployment is on the [roadmap](../ROADMAP.md).
 
-Reproduce (about 45 minutes with 12 containers; the image adds CPU PyTorch to the lab image):
+Reproduce (about 1.5 hours with 12 containers; the image adds CPU PyTorch to the lab image):
 
 ```bash
 export EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest
@@ -546,7 +546,7 @@ wall-clock times on the machine of the [test conditions](#test-conditions).
 | Robustness suite | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | `runs/robust/robust.json` | about 3.5 minutes with 40 workers (`wall_s` 205.1) |
 | Measured comparison | `python -m edgefdl compare --model results/model.pt --out runs/compare --workers 24` | `runs/compare/compare.json`, the file published as `results/compare.json` | about 14 min with 24 workers |
 | Real protocol stack | `scripts/lab.sh build`<br>`mkdir -p runs/smoke && scripts/lab.sh smoke \| tee runs/smoke/run1.log` | console log as in `results/smoke/` | a few minutes after the image is built; needs Docker with `--privileged` on Linux |
-| Accuracy on the real protocol stack | see [section 3.1](#31-online-accuracy-on-the-real-protocol-stack) | `runs/realstack/realstack.json`, as `results/realstack.json` (times and traffic vary between runs) | about 45 minutes with 12 containers |
+| Accuracy on the real protocol stack | see [section 3.1](#31-online-accuracy-on-the-real-protocol-stack) | `runs/realstack/realstack.json`, as `results/realstack.json` (times and traffic vary between runs) | about 1.5 hours with 12 containers |
 | Simulator against real stack | `scripts/lab.sh run python3 scripts/sim_vs_stack.py --out runs/lab/sim_vs_stack.json` | `runs/lab/sim_vs_stack.json`, as `results/sim_vs_stack.json` (RTT values vary slightly between runs) | about 1 minute after the image is built |
 | Unit tests | `python -m unittest discover -s tests` | 177 tests | about 30 s |
 

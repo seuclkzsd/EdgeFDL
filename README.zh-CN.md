@@ -20,7 +20,7 @@
 发起，只有带宽估计和按需精测在链路两端之间进行。它每 5 秒用轻量探测测量一次网络；异常持续出现时，一个小型 DDQN
 智能体指出**故障链路与故障类型**（链路中断、时延、丢包、抖动、带宽劣化、路由漂移），并给出**一条告警**，附研判依据、
 分厂商的排查命令，以及在等价虚拟网络上预演过的处置措施。对 L1，就是一条指明 L1 与故障类型的告警；对 L3，覆盖规划会补上
-一个设备侧的 NQA / IP SLA 探测，由运维在设备上配置一次，EdgeFDL 只读取其结果。智能体按每个网络单独训练，不需要生产网络的故障数据：故障注入在依据该网络自身拓扑构建的等价虚拟网络中进行。
+一个设备侧的 NQA / IP SLA 探测（虚拟后端上由仿真代替，从真实设备读取计划在 0.3 实现）。智能体按每个网络单独训练，不需要生产网络的故障数据：故障注入在依据该网络自身拓扑构建的等价虚拟网络中进行。
 
 ## 证据速览
 
@@ -28,7 +28,7 @@
 |---|---|---|
 | 比现有方案好在哪 | 在同一份测量数据上，与现有工具背后的方法对比（阈值告警、告警分组、布尔层析、NetBouncer 式回归、007 式投票，各含默认与调优参数，并加上控制面规则）：六种条件共 2,520 个故障，链路和类型全部判对 **98.6%**，最好的基线 96.3%；两条故障同时发生时，两条连同类型都报对 **97.3%**，最好的基线 92.0%，且没有误判告警。逐目标阈值不指出链路，每个故障最多 36 条告警 | [对比](docs/comparison.md#measured-comparison) · [`compare.json`](results/compare.json) |
 | 离开仿真还准吗 | 真实协议栈（网络命名空间、FRR OSPF、`tc`，真实时间 5 s 一轮），模型只在仿真上训练：84 个单故障场景 **84/84** 类型和链路全部正确，平均 37.9 s 告警，修复后全部清除；设备宕机 6/6；两条故障并发，首条告警 16/16 正确，两条都报出 15/16；2.67 网络小时 0 误报 | [结果](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) |
-| 能接真实网络吗 | `serve --backend live` 在 EMS 上只读测量路由网络，不在任何设备上创建或修改内容。在真实协议栈上做黑盒验证，故障从服务进程之外施加，路由器保持 Linux 默认 ICMP 限速：有 LSDB 和链路端点探针时 **34/34**，只有 LSDB 时 30/36，只用 ping 和 traceroute 时 28/36。尚未在物理设备上运行 | [接入真实网络](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
+| 能接真实网络吗 | `serve --backend live` 在 EMS 上测量路由网络，绝不写设备配置；使用 `--endpoints` 时，会在你列出的机器上启动短时探测进程。在真实协议栈上做黑盒验证，故障从服务进程之外施加，路由器保持 Linux 默认 ICMP 限速：有 LSDB 和链路端点探针时 **34/34**（此模式未跑设备宕机），只有 LSDB 时 30/36，只用 ping 和 traceroute 时 28/36。尚未在物理设备上运行 | [接入真实网络](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
 | 现在能试吗 | 浏览器里看回放、`docker compose up`，或从源码三条命令运行；不需要硬件和密钥 | [快速开始](#快速开始) |
 | 敢不敢用 | Apache-2.0，对设备只读，每个依赖列明许可证并由 CI 检查，镜像按哈希锁定，路线图按季度给出可量化标准 | [依赖](docs/dependencies.md) · [路线图](ROADMAP.md) · [治理](GOVERNANCE.md) |
 
@@ -42,7 +42,7 @@
 | 轻量 | 智能体单次前向推理 p99 0.575 ms（PyTorch，单线程；NumPy 引擎 0.302 ms），参数量 36,041；探测流量 222.0 kbps，即使全部经过最窄的 100 Mbps 链路也只占 0.222%；计算占单核 0.0868%；常驻内存 528.6 MB，主要是 PyTorch 运行时（设计指标：≤100 ms、<5%、≤20%） | [`bench.json`](results/bench.json) |
 | 不需要生产故障数据 | 等价虚拟网络枚举故障空间（演示拓扑上 231 个故障原语）。样本恰好在在线判决器会唤醒智能体的时刻截取（触发对齐），并做域随机化（更长的瞬时干扰、ICMP 限速、背景抖动）。16 个进程 87.8 s 生成 60,000 个样本；8 个 CPU 线程训练约 4.4 分钟 | [架构](docs/architecture.md) · [`pipeline.log`](results/pipeline.log) |
 | 真实协议栈实测 | 发布的模型运行在网络命名空间 + FRR OSPF + tc 上，真实时间 5 s 一轮：84 个单故障场景 84/84 类型和链路全部正确，修复后全部清除，平均 37.9 s 告警；设备宕机 6/6；两条故障并发，首条告警 16/16 正确，两条都报出 15/16；2.67 网络小时 0 误报，其中一半时间有 15% 轮次的瞬态干扰。冒烟测试连续 3 次 26/26；37 个目标的基线 RTT 与仿真相差不超过 0.74 ms | [结果](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) · [`realstack.json`](results/realstack.json) · [`results/smoke/`](results/smoke/) · [`sim_vs_stack.json`](results/sim_vs_stack.json) |
-| 只读接入真实网络 | `serve --backend live` 在 EMS 上用 ping 和 traceroute 测量网络，不创建、不修改任何内容，并拒绝故障注入；`preflight` 先检查地址、权限和可选输入。真实协议栈上的黑盒验证：有 `--lsdb-cmd` 和 `--endpoints` 时 34/34 正确（平均 38.7 s 告警），只有 `--lsdb-cmd` 时 30/36，只用 ping 和 traceroute 加 `--infer-state` 时 28/36（没有包列时看不到带宽故障）；故障之外 0 条告警。尚未在物理设备上运行 | [接入真实网络](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
+| 只读接入真实网络 | `serve --backend live` 在 EMS 上用 ping 和 traceroute 测量网络，绝不写设备配置，并拒绝故障注入；可选的 `--lsdb-cmd` 运行你提供的只读命令，`--endpoints` 在你列出的机器上启动短时探测进程；`preflight` 先检查地址、权限和可选输入。真实协议栈上的黑盒验证：有 `--lsdb-cmd` 和 `--endpoints` 时 34/34 正确（平均 38.7 s 告警，此模式未跑设备宕机），只有 `--lsdb-cmd` 时 30/36，只用 ping 和 traceroute 加 `--infer-state` 时 28/36（没有包列时看不到带宽故障）；故障之外 0 条告警。尚未在物理设备上运行 | [接入真实网络](docs/deployment.md#connecting-to-a-real-network) · [`live_blackbox.json`](results/live_blackbox.json) |
 | 一条命令运行 | `docker compose up` 在 `http://127.0.0.1:8460` 提供大屏，使用仿真网络和发布的模型。容器非 root、根文件系统只读、不带任何 capability，CPU 版 PyTorch，所有 Python 包按哈希锁定。镜像 1023.6 MB，完成一次故障与恢复后内存 171.2 MiB；在镜像内评估发布的模型，结果与 `results/eval_test.json` 逐字节相同 | [`docker_check.json`](results/docker_check.json) · [部署](docs/deployment.md#container-image) |
 | 系统集成 | Web 大屏、REST API、Syslog（RFC 5424）、Webhook（JSON）、Prometheus `/metrics`、带 schema 文件的 CSV 日志 | [API](docs/api.md) · [部署](docs/deployment.md) |
 
@@ -72,7 +72,8 @@ docker compose up        # 首次运行时构建镜像，不需要 Python
 
 ```bash
 git clone https://github.com/seuclkzsd/EdgeFDL.git && cd EdgeFDL
-pip install -r requirements.txt          # numpy、pyyaml、torch（CPU 版即可）；Python >= 3.8，Linux
+python3 -m venv .venv && . .venv/bin/activate      # Python >= 3.8，Linux
+pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
 python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 ```
 
@@ -95,7 +96,7 @@ python -m edgefdl serve --model results/model.pt --backend sim --interval 2
 | 指标自测 | `python -m edgefdl bench --model results/model.pt --out runs/bench --rounds 51840` | 51,840 轮 × 5 s = 72 小时仿真时间 |
 | 鲁棒性测试 | `python -m edgefdl robust --model results/model.pt --out runs/robust --workers 40` | 40 个工作进程约 3.5 分钟 |
 | 真实协议栈 | `scripts/lab.sh build && scripts/lab.sh smoke` | 需要 Docker 与特权容器；26 项检查 |
-| 真实协议栈准确率 | 见 [docs/results.md 第 3.1 节](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) | 需要 Docker 特权容器；12 个容器约 45 分钟 |
+| 真实协议栈准确率 | 见 [docs/results.md 第 3.1 节](docs/results.md#31-online-accuracy-on-the-real-protocol-stack) | 需要 Docker 特权容器；12 个容器约 1.5 小时 |
 | `live` 后端黑盒验证 | `scripts/lab.sh build-torch`，然后 `EDGEFDL_LAB_IMAGE=edgefdl-lab-torch:latest scripts/lab.sh run python3 scripts/live_blackbox.py --mode lsdb` | 需要 Docker 特权容器；每 17 个场景约 30 分钟 |
 | 容器镜像端到端 | `tools/dev/ci.sh image` | 需要 Docker 与 compose 插件；构建镜像，通过 REST API 注入故障，检查告警与恢复，然后清理 |
 | 大屏回放 | `python tools/demo/record.py` | 一次实时运行，约 14 分钟 |

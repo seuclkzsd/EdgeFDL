@@ -27,6 +27,7 @@ body:
         - Installation or dependency problem
         - Dashboard, REST API, Prometheus, Syslog or Webhook output
         - Real-stack backend (netns, lxd) or lab container
+        - Live backend (real network)
         - Performance or resource use
         - Other
     validations:
@@ -45,7 +46,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Operating system, Python and PyTorch versions, CPU, backend (`sim`, `netns`, `lxd`), and the size of the topology.
+      description: Operating system, Python and PyTorch versions, CPU, backend (`sim`, `netns`, `lxd`, `live`), and the size of the topology.
       placeholder: |
         OS: Ubuntu 24.04
         Python 3.12, PyTorch 2.9 (CPU)

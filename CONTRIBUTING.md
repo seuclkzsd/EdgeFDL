@@ -28,7 +28,7 @@ Issues suitable for first-time contributors carry the label `good first issue`; 
 
 - **Field reports from real edge networks.** Tell us how EdgeFDL handled a network you operate: whether `intake` and
   coverage planning described it correctly, how a model trained on its topology performed and, when you run it next
-  to the network (connection to physical networks is on the [roadmap](ROADMAP.md)), what it reported and what
+  to the network (`serve --backend live`, read-only), what it reported and what
   actually happened, whether it was right or wrong. Use the issue template "Report from a real network"; the
   requirements are below.
 - **Topologies.** Anonymized topologies of real campus, branch or factory networks, in the format of

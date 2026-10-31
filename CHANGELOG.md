@@ -9,7 +9,9 @@ All user-visible changes to EdgeFDL are recorded in this file. The format follow
 ## [0.2.0] - 2026-10-31
 
 EdgeFDL can now be pointed at a real network, read-only, and its accuracy is measured on a real protocol stack and against
-the methods behind existing tools. The released model `results/model.pt` and the result files of 0.1.2 are unchanged.
+the methods behind existing tools. The released model `results/model.pt` and the result files of 0.1.2 are unchanged, and
+0.2.0 reproduces them: `results/eval_test.json` byte for byte, and the 72-hour-equivalent self-test and the robustness suite
+with the same outcomes (latency, CPU, memory and run time vary with the machine's load).
 
 ### Added
 
@@ -46,7 +48,7 @@ the methods behind existing tools. The released model `results/model.pt` and the
 ### Changed
 
 - NOTICE lists the transitive packages and the container image, and records traceroute as GPL-2.0-or-later.
-- `learn_baseline` paces itself at the measurement interval.
+- `learn_baseline` paces itself at the measurement interval on the `live` backend.
 - Three unused imports removed; no change in behaviour.
 
 ### Fixed

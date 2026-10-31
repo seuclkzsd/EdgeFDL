@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # EdgeFDL 实验环境：单容器内用 netns 起整张等价虚拟网络（真实内核协议栈 + FRR OSPF + tc）。
 # 构建：scripts/lab.sh build    运行：scripts/lab.sh shell / scripts/lab.sh smoke
-FROM debian:bookworm-slim
+# 访问不了 Docker Hub 时用 EDGEFDL_REGISTRY 换镜像站（见 scripts/lab.sh）
+ARG REGISTRY=docker.io/library
+FROM ${REGISTRY}/debian:bookworm-slim
 ARG MIRROR=deb.debian.org
 ENV http_proxy= https_proxy= HTTP_PROXY= HTTPS_PROXY= no_proxy=* NO_PROXY=* \
     DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1

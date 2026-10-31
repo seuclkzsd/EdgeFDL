@@ -17,7 +17,7 @@ RUN=(docker run --rm --privileged --network none -v "$PWD":/work -w /work
      -e PYTHONPATH=/work -e NO_PROXY='*' -e no_proxy='*' -e OMP_NUM_THREADS=1)
 [ -z "${EDGEFDL_LAB_NAME:-}" ] || RUN+=(--name "$EDGEFDL_LAB_NAME")     # 给容器命名，便于并行跑时识别
 [ -z "${EDGEFDL_LAB_CPUSET:-}" ] || RUN+=(--cpuset-cpus "$EDGEFDL_LAB_CPUSET")
-BUILD=(--build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}")
+BUILD=(--build-arg MIRROR="${EDGEFDL_APT_MIRROR:-deb.debian.org}" --build-arg REGISTRY="${EDGEFDL_REGISTRY:-docker.io/library}")
 TORCH=(--build-arg TORCH=1)
 [ -z "${EDGEFDL_PIP_INDEX:-}" ] || TORCH+=(--build-arg PIP_INDEX="$EDGEFDL_PIP_INDEX")
 [ -z "${EDGEFDL_TORCH_WHEELS:-}" ] || TORCH+=(--build-arg TORCH_WHEELS="$EDGEFDL_TORCH_WHEELS")

@@ -77,7 +77,7 @@ OSPF timers, the model hash and the commit.
 Conventions used in all files:
 
 - Accuracies and rates are fractions between 0 and 1, except keys ending in `_pct`, which are percentages.
-- `_s` keys are seconds of simulated time (one measurement round is 5 s); `_ms` keys are wall-clock milliseconds.
+- `_s` keys are seconds of simulated time (one measurement round is 5 s), except in `realstack.json` and `live_*.json`, where they are wall-clock seconds; `_ms` keys are wall-clock milliseconds.
 - Fault types use the identifiers `link_down`, `delay`, `loss`, `jitter`, `bandwidth`, `route_drift`, plus `normal`
   (no fault) and `node_down` (device down, produced by the engine's aggregation of link-down conclusions).
 - An alarm or a truth item is written as `"<link> <type>"` (for example `"L1 link_down"`) or as a pair

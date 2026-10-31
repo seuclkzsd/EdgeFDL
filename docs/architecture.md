@@ -38,7 +38,8 @@ flowchart LR
 ```
 
 - **Single vantage point.** Connectivity, delay, loss and path probes start at the EMS; links that no EMS probe
-  crosses are covered by device-native NQA / IP SLA probes. EdgeFDL never writes device configuration; packet-train
+  crosses are covered by device-native NQA / IP SLA probes in the measurement plan (emulated on the virtual backends;
+  reading them from real devices is planned for 0.3). EdgeFDL never writes device configuration; packet-train
   bandwidth estimates and deep probes run between the two ends of a link, using the probe endpoints that the topology
   marks ([algorithms.md](algorithms.md#21-measurement-plan)).
 - **One model per network.** The model is trained on faults injected into an equivalent virtual network built
