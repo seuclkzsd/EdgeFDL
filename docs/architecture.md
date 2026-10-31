@@ -139,7 +139,7 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 | Module | Responsibility |
 |---|---|
 | [`edgefdl/__init__.py`](../edgefdl/__init__.py), [`__main__.py`](../edgefdl/__main__.py) | Package version (`0.1.2`) and the `python -m edgefdl` entry point. |
-| [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
+| [`edgefdl/cli.py`](../edgefdl/cli.py) | Command line: `topo`, `intake`, `baseline`, `gen`, `train`, `eval`, `bench`, `robust`, `compare`, `serve`, `vnet`, `pipeline`; loads a model bundle and assembles the online engine. |
 | [`edgefdl/topology.py`](../edgefdl/topology.py) | Topology data model (`Node`, `Link`, `Target`), validation of names, IDs and addresses, automatic /30 and loopback planning, deterministic OSPF shortest paths, forward and return route of every target, monitoring targets and coverage planning. |
 | [`edgefdl/intake/form.py`](../edgefdl/intake/form.py) | Requirements form (YAML) plus device configurations and LLDP → topology; form template. |
 | [`edgefdl/intake/extract.py`](../edgefdl/intake/extract.py) | Parses Huawei VRP, H3C Comware and Cisco IOS configuration text (hostname, interfaces, addresses, OSPF cost, speed), pairs interfaces into links by shared subnet, reads LLDP CSV, optional extraction from PNG / JPEG images via an OpenAI-compatible multimodal endpoint. |
@@ -166,6 +166,7 @@ Syslog (RFC 5424 over UDP) and Webhook (JSON POST) are described in [api.md](api
 | [`edgefdl/core/web/index.html`](../edgefdl/core/web/index.html) | Single-page operations dashboard (Chinese UI). |
 | [`edgefdl/bench.py`](../edgefdl/bench.py) | Self-test: inference latency, long run under transient noise, measurement and compute overhead, online fault scenarios. |
 | [`edgefdl/robust.py`](../edgefdl/robust.py) | Robustness suite: harsher interference, missing measurements, ICMP rate limiting, background jitter, busy-hour drift, fault-size sweep, concurrent link faults and device-down cases. |
+| [`edgefdl/compare.py`](../edgefdl/compare.py) | Measured comparison: a read-only tap on the backend records the stream the online engine sees, and re-implementations of threshold alerting, alarm grouping, boolean tomography, greedy set cover, NetBouncer-style regression and 007-style voting replay it; see [comparison.md](comparison.md). |
 | [`edgefdl/report.py`](../edgefdl/report.py) | Evaluation result → Markdown table. |
 
 Outside the package: [`scripts/lab.sh`](../scripts/lab.sh) and [`scripts/lab/Dockerfile`](../scripts/lab/Dockerfile)
