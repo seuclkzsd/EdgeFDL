@@ -29,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, Optional
 from urllib.parse import parse_qs, urlparse, urlsplit
 
+from ..faults.generator import drift_allowed
 from ..faults.injector import drift_cost
 from ..faults.model import FAULT_TYPES, TYPE_LABEL, Fault
 from ..topology import Topology
@@ -109,6 +110,8 @@ def parse_fault(topo: Topology, body) -> Fault:
         raise BadRequest(400, f"value 须为有限数值，收到 {v!r}")
     if t == "route_drift":
         cost = topo.link(lid).cost
+        if not drift_allowed(topo, lid):
+            raise BadRequest(400, f"route_drift 只适用于路由器之间的链路，{lid} 的一端是主机或网管")
         if x <= 0 or drift_cost(topo.link(lid), x) > 65535:
             raise BadRequest(400, f"route_drift 的 value（开销倍率）须大于 0，且使 {lid} 的开销（基线 {cost:g}）"
                                   f"不超过 65535，即倍率不超过 {65535 // cost:g}，收到 {v!r}")
@@ -291,7 +294,15 @@ def prometheus(engine) -> str:
     return "\n".join(lines) + "\n"
 
 
-def serve(engine, topo: Topology, host: str = "0.0.0.0", port: int = 8460, allow_inject: bool = True):
-    httpd = ThreadingHTTPServer((host, port), make_handler(engine, topo, allow_inject))
+def bind(host: str, port: int) -> ThreadingHTTPServer:
+    """先占住端口、暂不应答：端口不可用时在测量开始之前失败，不往运行中实例的日志里写东西。"""
+    httpd = ThreadingHTTPServer((host, port), BaseHTTPRequestHandler)
     httpd.daemon_threads = True
+    return httpd
+
+
+def serve(engine, topo: Topology, host: str = "0.0.0.0", port: int = 8460, allow_inject: bool = True,
+          httpd: Optional[ThreadingHTTPServer] = None) -> ThreadingHTTPServer:
+    httpd = httpd or bind(host, port)
+    httpd.RequestHandlerClass = make_handler(engine, topo, allow_inject)
     return httpd

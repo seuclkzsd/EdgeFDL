@@ -21,6 +21,11 @@ def main(argv=None):
     ap.add_argument("--json")
     a = ap.parse_args(argv)
     M, S = load(a.multi), load(a.single)
+    miss = sorted({k for r in M + S for k in ("long", "scen", "dual", "node", "single") if k not in r.get("online", {})})
+    if miss:
+        print(f"compare_robust: 结果文件缺少在线项 {', '.join(miss)}：判据要用到它们，"
+              "请去掉 robust 的 --kinds（或把它们加进去）重跑", file=sys.stderr)
+        return 2
     seeds = [m["config"]["seed"] for m in M]
     assert seeds == [s["config"]["seed"] for s in S], "种子不一致"
     rows, ok_all = [], True

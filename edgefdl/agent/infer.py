@@ -160,6 +160,9 @@ class Policy:
             if kind == "probe" and probe_fn is not None:
                 dp = probe_fn(lid)
                 li = self.enc.lidx[lid]
+                if not dp.sent:             # 精测没能运行（live 的端点故障）：同不能精测，在其余动作中重新决策，不编码成无应答
+                    ex.append(li * K + PROBE)
+                    continue
                 deep[li] = self.enc.deep(self._finite_bw(dp, li), ref)
                 probed[li] = True
                 probes.append(dict(link=lid, loss=_num(dp.loss), rtt=_num(dp.rtt_avg), mdev=_num(dp.rtt_mdev),

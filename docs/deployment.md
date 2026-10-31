@@ -42,7 +42,7 @@ Measured with the released model on the 12-device demo topology (simulation back
 |---|---|---|
 | CPU | 4.338 ms of computation per 5 s round = 0.0868% of one core | Inference runs on one thread: p99 0.575 ms per forward pass with PyTorch, 0.302 ms with `--engine numpy`; a full diagnosis including features p99 2.512 ms |
 | Memory | RSS 528.6 MB | Mostly the PyTorch runtime, here the CUDA build of PyTorch 2.9.1 (no GPU used); the model has 36,041 parameters |
-| Probe traffic | 222.0 kbit/s by the plan's accounting; about 290 KB per round (≈465 kbit/s) measured on the real protocol stack | 0.222% (plan) and at most 0.47% (real stack) of the narrowest 100 Mbit/s link even if all probe traffic crossed it; 0.022% of the 1 Gbit/s management uplink (plan) |
+| Probe traffic | 222.0 kbit/s by the plan's accounting; 336.8 kbit/s of light probes measured on the real protocol stack ([`results/realstack.json`](../results/realstack.json)); on `live`, about 60 kbit/s by default and 818.6 kbit/s with `--lsdb-cmd` and `--endpoints` ([`results/live_blackbox.json`](../results/live_blackbox.json)) | 0.222% (plan), 0.337% (real stack) and 0.819% (`live` with endpoints) of the narrowest 100 Mbit/s link even if all probe traffic crossed it; 0.022% of the 1 Gbit/s management uplink (plan) |
 | Disk | Logs rotate at 200 MB (MiB) with 20 archives kept, so each of the two logs takes at most about 4.1 GiB | Plus the model bundle and the topology file |
 
 The probe traffic of one round is 5 pings to every interface, loopback and host address, a traceroute per target and
@@ -67,6 +67,7 @@ machines.
 | `iproute2` (`ip`, `tc`), `iputils-ping`, `traceroute`, `iperf3`, FRR (`zebra`, `ospfd`, `vtysh`), `python3` | The `netns` backend (inside each LXD container for `lxd`) |
 | LXD | The `lxd` backend |
 | `ping`, `traceroute` (the Linux `traceroute` package, which has `-I` and `-N`) | The `live` backend, on the EMS |
+| `ping`, `iperf3`, `python3`, `timeout` (coreutils) | `live` with `--endpoints`: on the machines you list, and on the EMS when a measured link ends there |
 
 | Mode | Privileges |
 |---|---|
@@ -156,9 +157,11 @@ python -m edgefdl topo runs/site/topology.yaml
 
 The last line, `监测目标 11 个；盲区链路（已规划 NQA 探测目标）: L4`, reads "11 monitored targets; blind links (NQA
 probe targets planned): L4". A blind link is one that no path from the EMS crosses, so probes from the EMS
-cannot see a fault on it. Coverage planning adds a device-native probe target for each such link (Huawei and H3C NQA,
-Cisco IP SLA) from one end device to the other. The virtual backends run it themselves; on the physical network the
-operator configures it once on the end device and EdgeFDL only reads its results. On the demo topology the backup link L3 is the blind link.
+cannot see a fault on it. Coverage planning plans a probe for each such link, from one end device to the other: on the
+physical network a device-native probe (Huawei and H3C NQA, Cisco IP SLA). The virtual backends emulate it with a ping
+from that end device. EdgeFDL does not read results from devices yet; that is planned for 0.3. Until then, on `live`,
+list the end device in `--endpoints` and EdgeFDL runs the same ping there; otherwise the target is not measured. On the
+demo topology the backup link L3 is the blind link.
 
 Read the topology file once more before training. It is the single source of truth for the virtual network, the
 features, the alarms and the remediation advice, and the format is described in
@@ -175,8 +178,8 @@ for bandwidth, interfaces down for link down, OSPF cost changes for route drift)
 
 | Backend | What it is | Use it for | Verified by |
 |---|---|---|---|
-| `sim` | Analytic simulator: OSPF shortest paths and per-link delay, jitter, loss and bandwidth; parallelises over processes (60,000 samples in 87.8 s with 16 processes) | Baselines, sample generation, training, evaluation, self-test, robustness suite, `serve` for demonstrations | All accuracy and robustness results in [Results](results.md) |
-| `netns` | One Linux network namespace per device, a veth pair per link, FRR (zebra + ospfd) per router, `tc` on both link ends; real kernel forwarding and OSPF | Checking probes and fault semantics on a real protocol stack; real-stack baselines and samples | The 26-check smoke test ([`results/smoke/`](../results/smoke/)); baseline RTT of each of the 37 targets within 0.74 ms of the simulator, median 0.39 ms ([`results/sim_vs_stack.json`](../results/sim_vs_stack.json)); OSPF converges in about 11 s for 12 devices |
+| `sim` | Analytic simulator: OSPF shortest paths and per-link delay, jitter, loss and bandwidth; parallelises over processes (60,000 samples in 87.8 s with 16 processes) | Baselines, sample generation, training, evaluation, self-test, robustness suite, `serve` for demonstrations | All accuracy and robustness results in [Results](results.md), except [section 3.1](results.md#31-online-accuracy-on-the-real-protocol-stack) |
+| `netns` | One Linux network namespace per device, a veth pair per link, FRR (zebra + ospfd) per router, `tc` on both link ends; real kernel forwarding and OSPF | Checking probes and fault semantics on a real protocol stack; real-stack baselines and samples | [Online accuracy on the real protocol stack](results.md#31-online-accuracy-on-the-real-protocol-stack), 84/84 ([`results/realstack.json`](../results/realstack.json)); the 26-check smoke test ([`results/smoke/`](../results/smoke/)); baseline RTT of each of the 37 targets within 0.74 ms of the simulator, median 0.39 ms ([`results/sim_vs_stack.json`](../results/sim_vs_stack.json)); OSPF converges in about 11 s for 12 devices |
 | `lxd` | One LXD system container per device (FRR and the probe tools inside), one address-less LXD bridge per link, optional macvlan or bridged uplinks from chosen devices to physical ports of the host | The deployment form on the EMS or a training server, including interconnection of the virtual network with a physical network | Generation of the complete command sequence (dry run) |
 
 The real-stack backends use the interface names of the topology as Linux interface names, which allow at most 15
@@ -362,10 +365,11 @@ rate-limiting ICMP replies), jitter. `--learn-rounds N` measures the network for
 runs three deep probes on every link, fits a new baseline (per-target RTT, deviation, background loss rate and path;
 per-link bandwidth, cost and deep-probe baseline) and uses it instead of the bundle's. On the real-stack backends it first waits until every target answers, that is until OSPF has
 converged, and stops with an error if that takes longer than 60 s. The dashboard
-and the API start when learning is complete. The CLI recommends at least 120 rounds and prints an estimate from the
-interval (120 rounds × 5 s = 10 minutes); the learning rounds are measured back to back, so the actual duration
-depends on how long one round of probes takes on your network. Learn while the network is healthy: a fault present
-during learning becomes part of the baseline.
+and the API start when learning is complete; `serve` takes its port first, so a busy port stops it before anything is
+measured. The CLI recommends at least 120 rounds and prints an estimate from the interval (120 rounds × 5 s =
+10 minutes). On the virtual backends the learning rounds are measured back to back, so the actual duration depends on
+how long one round of probes takes; on `live` they run at the measurement interval. Learn while the network is healthy:
+a fault present during learning becomes part of the baseline.
 
 After the start the baseline keeps adapting on its own:
 
@@ -424,8 +428,10 @@ diagnosis.
 
 `serve --backend live` runs the online service against the network itself, from the EMS. It sends pings and
 traceroutes from the local host to the addresses in the topology and reads nothing else unless you give it more. It
-creates nothing and changes nothing: `up` and `down` do nothing on this backend, there is no virtual network, and no
-device receives a command.
+never writes device configuration: `up` and `down` do nothing on this backend and there is no virtual network. By
+default no device receives a command; `--lsdb-cmd` and `--endpoints` log in with the account you give them, and
+`--endpoints` starts short-lived probe processes on the machines you list
+([What changes on the devices](#what-changes-on-the-devices)).
 
 ### Prerequisites
 
@@ -441,6 +447,8 @@ device receives a command.
   and `lxd` require ([section 3](#3-build-the-equivalent-network-and-train-the-model)).
 - **`ping` and the Linux `traceroute` package on the EMS** (not the BusyBox or `inetutils` variants: `-I`, `-N` and `-q`
   are needed), with the [permissions below](#icmp-permissions).
+- **With `--endpoints`, `iperf3`, `python3` and `timeout` on the EMS as well** if an endpoint is a neighbour of the EMS:
+  the EMS then counts as one end of that link and runs the same probes itself. `preflight` checks them.
 - **A healthy network while the baseline is learned.** A fault present during learning becomes part of the baseline.
 
 ### From intake to alarms
@@ -463,15 +471,17 @@ python -m edgefdl serve --model runs/site/model.pt --backend live --infer-state 
 
 `preflight` pings every address (3 packets each) and lists those that do not answer with their device and link; it
 checks that `traceroute` runs with the current privileges, compares the measured paths with the topology, runs
-`--lsdb-cmd` and tests every link with endpoints on both sides. It prints one line per finding, ends with `检查通过`
-("check passed") or `检查未通过` ("check failed"), and `--json FILE` saves the report. `serve` and `baseline` run the same
-check first and stop if an address does not answer, because such a target would stay anomalous for ever. If an address
-really does not answer ICMP, for example because of an ACL, `--skip-silent` takes it out of the measurement plan: it
-then counts as missing, not as unreachable.
+`--lsdb-cmd` and tests every link with endpoints on both sides: a packet train, a short ping at the 10 ms interval of
+deep probes, and `iperf3` and `timeout` on both ends. A ping that could not run (a failed command or endpoint) is listed
+apart from an address that does not answer. It prints one line per finding, ends with `检查通过` ("check passed") or
+`检查未通过` ("check failed"), and `--json FILE` saves the report. `serve` and `baseline` run the same check first and
+stop if an address does not answer, because such a target would stay anomalous for ever. If an address really does not
+answer ICMP, for example because of an ACL, `--skip-silent` takes it out of the measurement plan: it then counts as
+missing, not as unreachable. If no address answers at all, or a ping could not run, they stop even with `--skip-silent`.
 
 `--backend live` needs a baseline measured on site: `serve` stops if neither `--learn-rounds` nor `--baseline` is given,
-because the bundle's baseline describes the virtual network. Learning runs at the measurement interval, so 120 rounds
-take 10 minutes. To survive restarts without learning again, save a baseline in a healthy period and reuse it:
+because the bundle's baseline describes the virtual network. On `live`, learning runs at the measurement interval, so
+120 rounds take 10 minutes. To survive restarts without learning again, save a baseline in a healthy period and reuse it:
 
 ```bash
 python -m edgefdl baseline --backend live --topo runs/site/topology.yaml --rounds 120 -o runs/site/site-baseline.json
@@ -487,15 +497,18 @@ single monitored path on this four-device network, too little to infer a cost fr
 
 ### What changes on the devices
 
-Nothing. The backend's executor allows only `ping`, `traceroute`, `iperf3` and the two packet-train scripts of
-[`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), and refuses everything else, so `ip`, `tc`, `sysctl` and
+No configuration. The backend's executor allows only `ping`, `traceroute`, `iperf3` (also under `timeout`) and the two
+packet-train scripts of [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), and refuses everything else, so `ip`, `tc`, `sysctl` and
 `vtysh` cannot run even by mistake. `inject` and `clear` raise an error, `POST /api/inject` and `/api/clear` answer 403,
 and the dashboard hides the fault-injection panel. The remediation commands in an alarm are text for the operator.
 
 Three things can reach a device, each of them under your control: the probes themselves; `--lsdb-cmd`, which is your
 own command, so give it a read-only account; and with `--endpoints`, short-lived `ping`, `iperf3` and `python3` processes
-on the machines you list, again through your own command prefix. A device-native NQA / IP SLA probe for a blind link
-would be a configuration change, and EdgeFDL does not make it; `live` does not read such probes yet.
+on the machines you list, again through your own command prefix. Killing a local `ssh` does not stop a remote process, so
+the `iperf3` server of a deep probe has a limit of its own: it stops after 10 s at the latest, even if no client arrives.
+A device-native NQA / IP SLA probe for a blind link would be a configuration change, and EdgeFDL does not make it;
+coverage planning only plans it, and `live` does not read such probes (planned for 0.3). Until then, list the link's end
+device in `--endpoints`: EdgeFDL then pings the far end from it.
 
 ### ICMP permissions
 
@@ -503,7 +516,7 @@ would be a configuration change, and EdgeFDL does not make it; `live` does not r
 |---|---|---|
 | `ping` | Works for ordinary users on mainstream distributions (setuid, file capability or `net.ipv4.ping_group_range`) | `preflight` reports it |
 | `traceroute -I` | Root, `CAP_NET_RAW`, or a group inside `net.ipv4.ping_group_range`. Without them it prints `You do not have enough privileges to use this traceroute method.` and `preflight` fails | `sudo setcap cap_net_raw+ep "$(readlink -f "$(command -v traceroute)")"` (verified in the lab container on `traceroute` 2.1.2 with `ping_group_range` closed, as user `nobody`) |
-| Deep probes at the endpoints | 100 pings at 10 ms. Older `iputils` refuse intervals under 200 ms for ordinary users (`ping: cannot flood; minimal interval allowed for user is 200ms`, seen on Ubuntu 20.04) | An endpoint account with `CAP_NET_RAW` on `ping`, or root |
+| Deep probes at the endpoints | 100 pings at 10 ms. Older `iputils` refuse intervals under 200 ms for ordinary users (`ping: cannot flood; minimal interval allowed for user is 200ms`, seen on Ubuntu 20.04) | `preflight` runs a short ping at this interval on every link with endpoints and fails if it is refused. Use an endpoint account with `CAP_NET_RAW` on `ping`, or root |
 
 The service itself needs no root and should not run as root. `--lsdb-cmd` runs with the privileges of the service
 user.
@@ -527,8 +540,9 @@ account with a shared SSH connection, so that the 5 s reads do not each open one
 ```
 
 Point-to-point and broadcast OSPF networks are both understood (checked on FRR's own output,
-[`results/live_trace_check.json`](../results/live_trace_check.json)). The command has 4 s; a failure, a time-out or an answer
-without router LSAs of the topology makes that round's LSDB missing, never "all links down", and it is counted in
+[`results/live_trace_check.json`](../results/live_trace_check.json)). The command has 4 s, after which its whole process
+group is killed; a failure, a time-out, malformed JSON or an answer without router LSAs of the topology makes that round's
+LSDB missing, never "all links down", and it is counted in
 `measurement.lsdb_fails` of `/api/status`. Only FRR's JSON is parsed: for Huawei, H3C or Cisco routers, the command has
 to translate `display ospf lsdb router` or `show ip ospf database router` into it, and no such adapter ships yet. That
 is why `--infer-state` exists.
@@ -538,12 +552,14 @@ command prefix that receives one shell command line as its last argument:
 
 ```yaml
 endpoints:
-  agg1: ssh -o BatchMode=yes probe@10.255.0.2
-  acc1: ssh -o BatchMode=yes probe@10.255.0.4
+  agg1: ssh -o BatchMode=yes -o ConnectTimeout=3 probe@10.255.0.2
+  acc1: ssh -o BatchMode=yes -o ConnectTimeout=3 probe@10.255.0.4
 ```
 
-Only links with both ends listed get packet trains and deep probes, the EMS counting as listed; a listed device can
-also start the blind link's probe. Endpoints need `python3` and `iperf3`, and must pass the UDP ports below.
+Keep `ConnectTimeout`: without it, a dead device holds a probe for the TCP connect time-out. EdgeFDL gives up on an
+endpoint's train receiver after 3 s, but a ping or the sender of a train waits up to 5 s. Only links with both ends
+listed get packet trains and deep probes, the EMS counting as listed; a listed device can also start the blind link's
+probe. Endpoints need `python3`, `iperf3` and `timeout`, and must pass the TCP and UDP ports below.
 
 ### What is lost without them
 
@@ -615,7 +631,8 @@ the byte count uses the accounting of the measurement log):
 
 That is 0.06% of a 100 Mbit/s link at the default, even if all of it crossed that link. Baseline learning runs at
 the same rate. `--lsdb-cmd` adds one read per round. With endpoints, each round adds packet trains on 3 links, and a deep
-probe adds 100 pings and a 1 s `iperf3` run at no more than 30% of the link's bandwidth.
+probe adds 100 pings and a 1 s `iperf3` run at no more than 30% of the link's bandwidth: of the lower of its nominal
+bandwidth and the packet-train estimate of that probe, or of the nominal bandwidth if the trains give no trusted estimate.
 
 Traceroutes rotate on purpose. Routers rate-limit ICMP time-exceeded messages, Linux by default to about one per second
 per destination with a small burst, and the first router sits on every path; the table shows what tracing everything at
@@ -649,7 +666,7 @@ Control-plane policing on routers may drop part of the pings. That is background
 | Routers do not answer TTL-exceeded, or hide some hops | `preflight` notes "path incomplete"; those paths stay unknown, never "changed" | Open time-exceeded to the EMS; add `--lsdb-cmd` |
 | A hop belongs to a device missing from the topology | The hop is ignored, the path keeps the devices it knows | Add the device, retrain |
 | `--lsdb-cmd` fails or times out | One line on standard error at the first failure, `measurement.lsdb_fails` rises, those rounds have no LSDB; the features keep the last value and the engine goes on | Fix the command; the next good read resumes |
-| An endpoint is unreachable | That estimate is missing; `preflight` reports it | Fix the prefix; estimates resume |
+| An endpoint is unreachable | That estimate is missing; `preflight` reports it. A deep probe whose ping could not run counts as not run, not as "no answer": the agent decides without it, and an active alarm stays | Fix the prefix; estimates resume |
 | The EMS uplink fails, or the EMS is isolated | All targets stop answering; one alarm on the uplink at best. Faults behind the uplink cannot be told from it | Alarm sinks on another path; check the EMS |
 | A fault was present while the baseline was learned | It becomes part of the baseline and raises no alarm | Learn again in a healthy period, or use a saved `--baseline` |
 | The topology changes (new device, readdressing, new costs) | New addresses are unknown, old ones go silent | Run `intake` and the pipeline again ([Retrain](#on-site-baseline-learning)) |
@@ -767,7 +784,7 @@ What the process reads, writes, executes and sends:
 |---|---|---|---|
 | Reads | The model bundle (`serve`), topology, intake files, baselines and sample sets given on the command line | The same | The same, and the `--endpoints` file |
 | Writes | `--log-dir` (`serve`), the `--out` / `-o` paths of the offline commands | Also FRR files under `/etc/frr/efl-*` and `/var/run/frr/efl-*` (`netns`), or a temporary staging directory that is pushed into the containers and then removed (`lxd`) | Only `--log-dir` and `--out` / `-o`, on the EMS |
-| Executes | No external programs | `ip`, `tc`, `sysctl` (per-namespace keys only), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train probe of [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), FRR `zebra`, `ospfd`, `vtysh`; `lxc` for LXD | `ping`, `traceroute`; your `--lsdb-cmd`; with `--endpoints`, your command prefixes around `ping`, `iperf3` and the packet-train probe. Anything else is refused by an allow-list |
+| Executes | No external programs | `ip`, `tc`, `sysctl` (per-namespace keys only), `ping`, `traceroute`, `iperf3`, `python3 -c` with the packet-train probe of [`edgefdl/measure/probes.py`](../edgefdl/measure/probes.py), FRR `zebra`, `ospfd`, `vtysh`; `lxc` for LXD | `ping`, `traceroute`; your `--lsdb-cmd`; with `--endpoints`, your command prefixes around `ping`, `iperf3` under `timeout` and the packet-train probe, and the same probes without a prefix on a measured link that ends at the EMS. Anything else is refused by an allow-list |
 | Network | The HTTP port of `serve`; the configured Syslog and Webhook receivers; the `intake --llm` endpoint if given | Also the probe traffic of the measurement plan | Also the probes described in [Rate of probing](#rate-of-probing) |
 
 There is no telemetry and no update check. The full statement, with the environment variables read, is in
@@ -775,10 +792,9 @@ There is no telemetry and no update check. The full statement, with the environm
 
 ## 7. Checklist before going live
 
-- [ ] `topo` shows the expected devices and links and lists the blind links. The virtual backends emulate their NQA
-      / IP SLA probes; on the physical network these probes are to be configured on the devices, and reading their
-      results over SNMP is planned for 0.3. Until then a blind link is measured only if its end device is in the
-      `--endpoints` file.
+- [ ] `topo` shows the expected devices and links and lists the blind links. Coverage planning plans an NQA / IP SLA
+      probe for each and the virtual backends emulate it; reading these probes from devices is planned for 0.3. Until
+      then a blind link is measured only if its end device is in the `--endpoints` file.
 - [ ] `preflight` passes from the EMS: every address answers, or those that do not are understood and `--skip-silent`
       is intended.
 - [ ] `eval_test.json` and `bench/bench.json` of the site model have been reviewed against [Results](results.md).
@@ -799,9 +815,10 @@ There is no telemetry and no update check. The full statement, with the environm
   link and need a probe endpoint there. Further steps are on the [roadmap](../ROADMAP.md): the LXD backend on hardware,
   interconnected with a physical network through the EMS uplink (0.2); passive OSPF listening and reading NQA / IP SLA
   results over SNMP (0.3); a field deployment on a production edge network (1.0).
-- Accuracy and robustness figures come from the simulation backend on the demo topology; the `netns` backend is
-  validated by smoke tests; the `live` backend is validated black-box on the `netns` real stack, not yet on physical
-  devices; for the `lxd` backend the generated commands are verified (dry run) and have not yet been run on hardware.
+- Accuracy and robustness figures come from the simulation backend on the demo topology, except
+  [online accuracy on the real protocol stack](results.md#31-online-accuracy-on-the-real-protocol-stack), measured on
+  the `netns` backend, which also passes the smoke test; the `live` backend is validated black-box on the `netns` real
+  stack, not yet on physical devices; for the `lxd` backend the generated commands are verified (dry run) and have not yet been run on hardware.
 - A 72-hour real-time run of `serve` is planned; the 72-hour figure in the self-test is simulated time. Kylin OS and
   openEuler support is planned.
 - Light probes do not detect one-way loss below about 3% or bandwidth still above about 70% of the baseline. With

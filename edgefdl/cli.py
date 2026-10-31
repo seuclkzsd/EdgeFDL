@@ -24,10 +24,15 @@ import sys
 import time
 from dataclasses import asdict
 
+import yaml
+
 from . import topology as topomod
 from .measure.model import MeasurePlan
 
 DEFAULT_TOPO = os.path.join(os.path.dirname(__file__), "..", "configs", "demo_topology.yaml")
+ROBUST_KINDS = ("long", "scen", "dual", "node", "single", "node_dual", "node_back")     # robust.online_matrix 的在线项
+COMPARE_CONDITIONS = ("standard", "icmp_limit_5pct_new", "icmp_limit_5pct_known", "transient_15s",
+                      "background_jitter_1ms", "busy_hour_drift_1ms")                   # compare.conditions 的条件名
 
 
 def _plan(args) -> MeasurePlan:
@@ -35,6 +40,21 @@ def _plan(args) -> MeasurePlan:
     if getattr(args, "interval", None):
         p.interval_s = args.interval
     return p
+
+
+def _mkparent(path):
+    """输出文件的目录提前建好：不能等长时间的计算跑完才发现写不了。"""
+    if path:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+
+
+def _names(text, valid, opt):
+    """逗号分隔的名称表，不认识的名称报错并列出可选值。"""
+    xs = [x.strip() for x in text.split(",") if x.strip()]
+    bad = [x for x in xs if x not in valid]
+    if bad or not xs:
+        raise SystemExit(f"edgefdl: {opt} 取值有误：{', '.join(bad) or repr(text)}；可选：{', '.join(valid)}")
+    return xs
 
 
 def _backend(kind, topo, plan, args, auto_dry=False):
@@ -78,6 +98,8 @@ def _live_ready(b, args):
     print(format_preflight(rep), flush=True)
     silent = [s["id"] for s in rep["silent"]]
     if silent and getattr(args, "skip_silent", False):
+        if not rep["answered"]:             # 全部跳过后什么也测不到，却不会有任何告警
+            raise SystemExit("edgefdl: 没有任何地址应答，--skip-silent 不适用：检查网管的路由、地址和 ICMP 策略")
         b.skip_targets(silent)
         print(f"--skip-silent：{len(silent)} 个不应答的地址不再探测，按缺测处理", flush=True)
         rep["problems"] = [p for p in rep["problems"] if "不应答" not in p]
@@ -85,16 +107,23 @@ def _live_ready(b, args):
         raise SystemExit("edgefdl: 接入检查未通过；地址确实不回 ICMP 时可加 --skip-silent")
 
 
-def build_engine(model_path, backend_kind, log_dir, args, plan_override=None):
-    from .agent.features import FeatureEncoder
-    from .agent.infer import Policy
+def _sinks(args):
     from .core.alarms import make_sinks
-    from .core.orchestrator import Engine
     try:                                    # 先校验告警通道，配置有误时在建虚拟网络之前退出
-        sinks = make_sinks(json.loads(args.sinks) if getattr(args, "sinks", None) else [])
+        return make_sinks(json.loads(args.sinks) if getattr(args, "sinks", None) else [])
     except ValueError as e:                 # json.JSONDecodeError 也是 ValueError
         raise SystemExit(f"edgefdl: --sinks 配置有误：{e}")
+
+
+def build_engine(model_path, backend_kind, log_dir, args, plan_override=None, sinks=None):
+    from .agent.features import FeatureEncoder
+    from .agent.infer import Policy
+    from .core.orchestrator import Engine
+    sinks = _sinks(args) if sinks is None else sinks
     ag, topo, base, plan, meta = load_bundle(model_path)
+    if backend_kind == "live":              # 模型包不决定现网上的探测量
+        from .vnet.live import bundle_plan
+        plan = bundle_plan(plan)
     if plan_override:
         plan = plan_override(plan)
     backend = _backend(backend_kind, topo, plan, args)
@@ -133,6 +162,7 @@ def cmd_preflight(args):
         t = load_bundle(args.model)[1]
     else:
         t = topomod.load(args.topo)
+    _mkparent(args.json)
     rep = preflight(_backend("live", t, _plan(args), args), count=args.count)
     print(format_preflight(rep))
     if args.json:
@@ -181,6 +211,7 @@ def cmd_train(args):
     import torch
     from .agent.ddqn import Agent, AgentConfig, Dataset
     from .agent.features import Baseline
+    _mkparent(args.out)
     torch.set_num_threads(args.threads)
     tr = Dataset(args.data)
     va = Dataset(args.val) if args.val else None
@@ -203,6 +234,7 @@ def cmd_train(args):
 def cmd_eval(args):
     from .agent.ddqn import Agent, Dataset
     from .report import eval_markdown
+    _mkparent(args.json)
     ag = Agent.load(args.model)
     ds = Dataset(args.data)
     m = ag.evaluate(ds)
@@ -220,19 +252,21 @@ def cmd_bench(args):
 
 def cmd_robust(args):
     from .robust import run_robust
+    kinds = _names(args.kinds, ROBUST_KINDS, "--kinds") if args.kinds else None
     ek = json.loads(args.engine) if args.engine else {}
     if args.single_alarm:
         ek["multi"] = False
     run_robust(args.model, args.out, workers=args.workers, n=args.n, sweep_reps=args.sweep_reps,
                rounds=args.rounds, dual_n=args.dual, node_reps=args.node_reps, only=args.only, seed=args.seed,
-               ek=ek or None, kinds=args.kinds.split(",") if args.kinds else None)
+               ek=ek or None, kinds=kinds)
 
 
 def cmd_compare(args):
     from .compare import TEST_SEEDS, run_compare
+    conds = _names(args.conditions, COMPARE_CONDITIONS, "--conditions") if args.conditions else None
     seeds = [int(x) for x in args.seeds.split(",")] if args.seeds else TEST_SEEDS
     run_compare(args.model, args.out, workers=args.workers, seeds=seeds, rounds=args.rounds, val_rounds=args.val_rounds,
-                dual_n=args.dual, node_reps=args.node_reps, conds=args.conditions.split(",") if args.conditions else None)
+                dual_n=args.dual, node_reps=args.node_reps, conds=conds)
 
 
 def _site_baseline(site, bundle):
@@ -244,39 +278,52 @@ def _site_baseline(site, bundle):
     return site
 
 
+def _bind(args):
+    from .core.api import bind
+    try:
+        return bind(args.host, args.port)
+    except (OSError, OverflowError) as e:
+        raise SystemExit(f"edgefdl: 无法监听 {args.host}:{args.port}：{e}（端口被占用时用 --port 换一个）")
+
+
 def cmd_serve(args):
     from .core.api import serve
     if args.backend == "live" and not (args.learn_rounds or args.baseline):
         raise SystemExit("edgefdl: live 后端须用现场基线：加 --learn-rounds（建议 ≥120）或 --baseline <文件>；"
                          "模型包自带的基线来自等价虚拟网络，与现场时延不同")
-    eng, topo, backend = build_engine(args.model, args.backend, args.log_dir, args,
-                                      plan_override=lambda p: (setattr(p, "interval_s", args.interval) or p)
-                                      if args.interval else p)
-    if backend.read_only:
-        _live_ready(backend, args)
-    if args.baseline:
-        from .agent.features import Baseline
-        eng.set_baseline(_site_baseline(Baseline.load(args.baseline), eng.enc.base))
-    elif args.learn_rounds:
-        from .faults.generator import learn_baseline
-        if hasattr(backend, "wait_converged"):
-            backend.wait_converged()
-        print(f"上线基线学习：{args.learn_rounds} 轮（约 {args.learn_rounds * eng.plan.interval_s / 60:.0f} 分钟）…", flush=True)
-        learned = learn_baseline(backend, rounds=args.learn_rounds)
-        eng.set_baseline(_site_baseline(learned, eng.enc.base) if backend.read_only else learned)
-    if backend.read_only:
-        backend.set_reference(eng.enc.base.paths)
-    eng.start()
-    httpd = serve(eng, topo, args.host, args.port, allow_inject=not args.no_inject and not backend.read_only)
-    print(f"边缘网管已启动：http://{args.host}:{args.port}  后端={backend.name}  日志={args.log_dir}", flush=True)
+    sinks = _sinks(args)
+    httpd = _bind(args)                     # 端口不可用时在建网络、写日志、开始测量之前退出；学习基线期间端口已占住、暂不应答
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        eng, topo, backend = build_engine(args.model, args.backend, args.log_dir, args, sinks=sinks,
+                                          plan_override=lambda p: (setattr(p, "interval_s", args.interval) or p)
+                                          if args.interval else p)
+        if backend.read_only:
+            _live_ready(backend, args)
+        if args.baseline:
+            from .agent.features import Baseline
+            eng.set_baseline(_site_baseline(Baseline.load(args.baseline), eng.enc.base))
+        elif args.learn_rounds:
+            from .faults.generator import learn_baseline
+            if hasattr(backend, "wait_converged"):
+                backend.wait_converged()
+            print(f"上线基线学习：{args.learn_rounds} 轮（约 {args.learn_rounds * eng.plan.interval_s / 60:.0f} 分钟）…", flush=True)
+            learned = learn_baseline(backend, rounds=args.learn_rounds)
+            eng.set_baseline(_site_baseline(learned, eng.enc.base) if backend.read_only else learned)
+        if backend.read_only:
+            backend.set_reference(eng.enc.base.paths)
+        serve(eng, topo, args.host, args.port, allow_inject=not args.no_inject and not backend.read_only, httpd=httpd)
+        eng.start()
+        print(f"边缘网管已启动：http://{args.host}:{args.port}  后端={backend.name}  日志={args.log_dir}", flush=True)
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            eng.stop()
+            if backend.name == "sim":
+                backend.down()
     finally:
-        eng.stop()
-        if backend.name == "sim":
-            backend.down()
+        httpd.server_close()
 
 
 def cmd_vnet(args):
@@ -324,6 +371,12 @@ def _live_args(p, skip: bool = True):
                    help="live 后端：每轮 traceroute 几个目标（轮转，默认每秒 1 个，适应设备的 ICMP 限速；0 表示全部）")
     if skip:
         p.add_argument("--skip-silent", action="store_true", help="live 后端：不应答的地址不再探测，按缺测处理（默认停止并列出）")
+
+
+def _hint(args):
+    if getattr(args, "backend", "") == "netns" and os.geteuid() != 0:
+        return "\n（netns 后端需要 root；没有 root 时用 scripts/lab.sh run <命令>，见 docs/quickstart.md 第 6 节）"
+    return ""
 
 
 def main(argv=None):
@@ -416,7 +469,7 @@ def main(argv=None):
     p.add_argument("--engine", help='总控参数 JSON，如 {"confirm_gap": 2, "track": false}')
     p.add_argument("--seed", type=int, help="随机种子（默认取环境变量 EDGEFDL_ROBUST_SEED，再缺省 21）")
     p.add_argument("--single-alarm", action="store_true", help="总控退化为单告警（同一时刻至多一条活动告警），用于对照/回退")
-    p.add_argument("--kinds", help="只跑指定在线项，逗号分隔：long,scen,dual,node,single,node_dual,node_back")
+    p.add_argument("--kinds", help="只跑指定在线项，逗号分隔：" + ",".join(ROBUST_KINDS))
     p.set_defaults(fn=cmd_robust)
 
     p = sp.add_parser("compare", help="同台对比：同一测量流上回放现有方法并与在线引擎比较")
@@ -428,7 +481,7 @@ def main(argv=None):
     p.add_argument("--val-rounds", type=int, default=4320, help="验证集每个条件的正常运行轮数")
     p.add_argument("--dual", type=int, default=60, help="每个种子的双故障试验次数")
     p.add_argument("--node-reps", type=int, default=2, help="每个种子每台设备的宕机试验次数")
-    p.add_argument("--conditions", help="只跑指定条件，逗号分隔")
+    p.add_argument("--conditions", help="只跑指定条件，逗号分隔：" + ",".join(COMPARE_CONDITIONS))
     p.set_defaults(fn=cmd_compare)
 
     p = sp.add_parser("serve", help="在线运行网管系统 + Web 大屏")
@@ -474,7 +527,10 @@ def main(argv=None):
     if getattr(args, "topo", None) == DEFAULT_TOPO and not os.path.isfile(DEFAULT_TOPO):
         raise SystemExit("edgefdl: 找不到默认拓扑 configs/demo_topology.yaml（它在源码仓库中，不随 Python 包安装）。"
                          "请在命令行指定拓扑文件，或在仓库目录下用 python -m edgefdl 运行")
-    args.fn(args)
+    try:
+        args.fn(args)
+    except (OSError, RuntimeError, ValueError, OverflowError, yaml.YAMLError) as e:     # 文件缺失、权限等常见错误不打印调用栈
+        raise SystemExit(f"edgefdl: {e}{_hint(args)}") from None
 
 
 if __name__ == "__main__":

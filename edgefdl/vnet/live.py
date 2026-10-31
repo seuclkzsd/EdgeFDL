@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: 2026 seuclkzsd and the EdgeFDL contributors
 # SPDX-License-Identifier: Apache-2.0
-"""现网只读后端：在网管服务器上测量真实路由网络，对设备不写入任何东西。
+"""现网只读后端：在网管服务器上测量真实路由网络，不改任何设备的配置。
 
 默认只从本机发 ping 和 traceroute，目标是拓扑中的全部地址；解析与每轮流程与 netns / LXD 后端共用
 （measure.probes、vnet.stack.KernelStackBackend）。其余测量都是可选的，由运维方显式提供：
   · --lsdb-cmd   一条 shell 命令，输出 FRR `show ip ospf database router json` 的 JSON（如经只读 ssh 账号）；
   · --endpoints  一个 YAML 文件，列出能在其上跑探测的设备及进入方式（命令前缀），只有两端都列出的链路才做包列
-                 带宽估计和精测，列出的设备作为盲区链路 NQA 目标的发起端。
+                 带宽估计和精测（网管本机算一端，此时探测进程也在本机运行），列出的设备作为盲区链路 NQA 目标的发起端，
+                 由它 ping 对端代替设备原生 NQA / IP SLA 探测。读取设备原生探测的结果尚未实现（计划 0.3）。
 没有提供的测量按缺测处理：不写入 RoundResult、不进基线，引擎按 Backend.can_* 屏蔽相应动作，见 docs/deployment.md。
 --infer-state 时由数据面推断链路中断与开销变化（StateInference），代替缺失的 LSDB 特征。
 
@@ -16,8 +17,13 @@ up() / down() 不创建也不改变任何东西；inject / clear 一律拒绝，
 from __future__ import annotations
 
 import json
+import math
+import os
+import re
+import select
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -30,11 +36,13 @@ import yaml
 from ..faults.generator import drift_allowed
 from ..faults.model import DRIFT_FACTORS, Fault
 from ..measure import probes
-from ..measure.model import NAN, LsdbEntry, MeasurePlan, RoundResult
+from ..measure.model import NAN, LsdbEntry, MeasurePlan, PingStat, RoundResult
 from ..topology import Target, Topology
 from .stack import KernelStackBackend, NodeExec, parse_lsdb
 
 LSDB_TIMEOUT_S = 4.0
+READY_TIMEOUT_S = 3.0                           # 等端点上的探测接收端就绪的上限：端点不可达时不能卡住整轮测量
+DEEP_CHECK_PINGS = 3                            # 上线前检查用几个包试精测的短间隔 ping
 REFUSE = "live 后端只读：不向真实网络注入或清除故障，请在等价虚拟网络（sim / netns / lxd）上演练"
 
 
@@ -45,7 +53,7 @@ class ReadOnlyError(RuntimeError):
 def load_endpoints(path: Optional[str]) -> Dict[str, str]:
     """读探测端点 YAML：`endpoints: {设备名: 命令前缀}`。
 
-    命令前缀之后接一个参数——一条 shell 命令行，例如 `ssh -o BatchMode=yes probe@10.255.0.2`
+    命令前缀之后接一个参数——一条 shell 命令行，例如 `ssh -o BatchMode=yes -o ConnectTimeout=3 probe@10.255.0.2`
     或 `ip netns exec efl-agg1 sh -c`。"""
     if not path:
         return {}
@@ -58,13 +66,70 @@ def load_endpoints(path: Optional[str]) -> Dict[str, str]:
     if not isinstance(eps, dict) or not all(isinstance(k, str) and isinstance(v, str) and v.strip()
                                             for k, v in eps.items()):
         raise ValueError(f"{path}: 须为 endpoints: {{设备名: 命令前缀}} 的 YAML 映射")
+    for k, v in eps.items():
+        try:
+            argv = shlex.split(v)
+        except ValueError as e:
+            raise ValueError(f"{path}: {k} 的命令前缀无法解析（{e}）：{v}") from None
+        if not argv or not argv[0]:
+            raise ValueError(f"{path}: {k} 的命令前缀为空")
     return dict(eps)
+
+
+def bundle_plan(plan: MeasurePlan) -> MeasurePlan:
+    """live 后端采用的测量计划。探测量（包数、包长、速率、时长）不由模型包决定，一律取缺省值，文档写明的探测上限才成立；
+    模型包只决定研判窗口，以及比缺省值更慢的测量周期（更快的周期由运维方用 --interval 显式给出）。"""
+    p = MeasurePlan()
+    if isinstance(plan.interval_s, (int, float)) and math.isfinite(plan.interval_s):
+        p.interval_s = max(p.interval_s, float(plan.interval_s))
+    if isinstance(plan.window, int) and 1 <= plan.window <= 60:
+        p.window = plan.window
+    keys = [k for k in vars(p) if vars(p)[k] != vars(plan)[k]]
+    if keys:
+        print(f"模型包的测量计划里 {', '.join(keys)} 超出 live 后端允许的范围，已改用缺省值", file=sys.stderr, flush=True)
+    return p
+
+
+def limited(argv: Sequence[str], seconds: float) -> List[str]:
+    """给命令加运行时限（coreutils timeout）。端点上的 iperf3 不能靠本机杀进程收尾：杀掉 ssh 不会结束对端进程。"""
+    return ["timeout", f"{int(math.ceil(seconds))}"] + list(argv)
+
+
+def _finish(p: subprocess.Popen, wait_s: float = 0.0) -> None:
+    """收尾一个探测进程。先发 SIGTERM：本机的 timeout 收到后会转发给 iperf3，收到 SIGKILL 则会把 iperf3 留下。"""
+    try:
+        p.wait(timeout=wait_s)
+    except subprocess.TimeoutExpired:
+        p.terminate()
+        try:
+            p.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            p.wait()
+    p.stdout.close()
+
+
+def _wait_output(p: subprocess.Popen, mark: str, timeout: float) -> bool:
+    """等进程的标准输出出现 mark。进程已退出或超时返回 False。直接读文件描述符：select 看不到文件对象内部缓冲的行。"""
+    fd, end, seen = p.stdout.fileno(), time.monotonic() + timeout, ""
+    while True:
+        left = end - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            return False
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            return False
+        seen += chunk.decode("utf-8", "replace")
+        if mark in seen:
+            return True
 
 
 def _is_probe(argv: Sequence[str]) -> bool:
     """放行的探测命令：ping、traceroute、iperf3 和包列收发脚本（measure.probes）。"""
     if not argv:
         return False
+    if argv[0] == "timeout":                    # 只放行 limited() 给 iperf3 加的时限
+        return len(argv) > 2 and re.fullmatch(r"\d+", argv[1]) is not None and argv[2] == "iperf3"
     if argv[0] in ("ping", "traceroute", "iperf3"):
         return True
     return argv[0] == "python3" and len(argv) > 2 and argv[1] == "-c" and argv[2] in (probes.TRAIN_RECV, probes.TRAIN_SEND)
@@ -94,15 +159,25 @@ class LiveExec(NodeExec):
         return shutil.which(cmd) is not None
 
     def shell(self, cmd: str, timeout: float) -> Tuple[int, str, str]:
-        """运行运维方提供的只读命令（--lsdb-cmd），返回 (返回码, 标准输出, 标准错误)。"""
+        """运行运维方提供的只读命令（--lsdb-cmd），返回 (返回码, 标准输出, 标准错误)。
+        命令单独成一个进程组，超时时整组杀掉：只杀 sh 的话，复合命令里的子进程每轮都会留下一个。"""
         try:
-            p = subprocess.run(["sh", "-c", cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               universal_newlines=True, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return 124, "", f"超时（{timeout:g}s）"
+            p = subprocess.Popen(["sh", "-c", cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 universal_newlines=True, start_new_session=True)
         except OSError as e:
             return 127, "", str(e)
-        return p.returncode, p.stdout, p.stderr
+        try:
+            out, err = p.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            p.wait()
+            p.stdout.close()
+            p.stderr.close()
+            return 124, "", f"超时（{timeout:g}s）"
+        return p.returncode, out, err
 
 
 class StateInference:
@@ -211,6 +286,7 @@ class LiveBackend(KernelStackBackend):
     name = "live"
     read_only = True
     LINUX_IFNAMES = False                       # 现网接口名（GigabitEthernet0/0/1）只用于告警展示
+    READY_TIMEOUT_S = READY_TIMEOUT_S
 
     def __init__(self, topo: Topology, plan: Optional[MeasurePlan] = None, lsdb_cmd: Optional[str] = None,
                  endpoints: Optional[Dict[str, str]] = None, skip: Sequence[str] = (),
@@ -281,6 +357,44 @@ class LiveBackend(KernelStackBackend):
         raise ReadOnlyError(REFUSE)
 
     # ------------------------------------------------------------ 测量
+    def _ping(self, node: str, ip: str, tid: str, count: int, interval: float) -> PingStat:
+        """返回码 0 / 1 才是 ping 跑完了（1 = 没有收到应答）。其余（2 参数或权限，124 超时，127 无此命令，255 ssh 失败）
+        以及没有统计输出的 1（前缀自身的失败）都按缺测处理（sent=0）："没跑成"不是"没应答"，后者是链路中断的证据。"""
+        try:
+            rc, out = self.ex.run(node, probes.ping_cmd(ip, count, interval, self.plan.ping_size), quiet=True,
+                                  timeout=count * interval + 4)
+        except OSError:                         # 前缀里的程序不存在
+            return PingStat(target=tid, sent=0, recv=0)
+        if rc not in (0, 1):
+            return PingStat(target=tid, sent=0, recv=0)
+        return probes.parse_ping(out, tid, 0 if rc else count)
+
+    def _iperf_want(self, l, est: float) -> float:
+        """精测在怀疑有故障时才跑，链路此时的容量可能远低于标称值：按本次包列估计与标称带宽中较小者的比例限速。
+        包列没有给出可信估计时只能按标称带宽。"""
+        return min(l.bw_mbps, est if est == est else l.bw_mbps) * self.plan.deep_iperf_rate_ratio
+
+    def _iperf(self, src: str, dst: str, dst_ip: str, port: int, want: float) -> Tuple[float, int]:
+        """与虚拟网络的差别都在失败路径上：服务端自带时限，确认在监听后才发流，起不来或运行失败时吞吐按缺测处理。"""
+        s = self.plan.deep_iperf_s
+        try:
+            srv = self.ex.popen(dst, limited(probes.iperf3_server_cmd(port) + ["--forceflush"],
+                                             s + 2 + self.READY_TIMEOUT_S + 4))
+        except OSError:
+            return NAN, 0
+        wait = 0.0
+        try:
+            if not _wait_output(srv, "listening", self.READY_TIMEOUT_S):
+                return NAN, 0
+            wait = 2.0
+            _, out = self.ex.run(src, limited(probes.iperf3_client_cmd(dst_ip, s, want, port, udp=True), s + 4),
+                                 quiet=True, timeout=s + 6)
+            return probes.parse_iperf3(out)
+        except OSError:
+            return NAN, 0
+        finally:
+            _finish(srv, wait)
+
     def _bw_cand(self) -> List[str]:
         return [l.id for l in self.topo.links if self.can_bw(l.id)]
 
@@ -334,7 +448,7 @@ class LiveBackend(KernelStackBackend):
             if rc != 0:
                 raise ValueError(f"返回码 {rc}：{err.strip()[:200]}")
             res = self._parse_lsdb(out)
-        except ValueError as e:                 # json.JSONDecodeError 也是 ValueError；本轮 LSDB 缺测
+        except (ValueError, TypeError, AttributeError) as e:     # 坏 JSON，或合法 JSON 但结构不对；本轮 LSDB 缺测
             self.lsdb_fails += 1
             if not self.lsdb_error:             # 只在由好转坏时报一次
                 print(f"--lsdb-cmd 读取失败，LSDB 按缺测处理：{e}", file=sys.stderr, flush=True)
@@ -377,6 +491,11 @@ def preflight(b: LiveBackend, count: int = 3) -> dict:
     miss = [c for c in ("ping", "traceroute") if not b.ex.have(c)]
     for c in miss:
         rep["problems"].append(f"本机没有 {c} 命令")
+    links = [l.id for l in topo.links if b.can_bw(l.id)]
+    if any(topo.vantage in (topo.link(lid).a, topo.link(lid).b) for lid in links):   # 网管本机也是探测的一端
+        for c in ("python3", "iperf3", "timeout"):
+            if not b.ex.have(c):
+                rep["problems"].append(f"本机没有 {c} 命令：网管所在的链路要做包列带宽估计和精测")
     own = [l.ip_of(topo.vantage) for l in topo.links if topo.vantage in (l.a, l.b)]
     if own and not any(_is_local(ip) for ip in own):
         rep["notes"].append(f"本机没有拓扑给网管的地址（{', '.join(own)}）：确认在网管上运行，或按实际地址修正拓扑")
@@ -387,16 +506,21 @@ def preflight(b: LiveBackend, count: int = 3) -> dict:
         with ThreadPoolExecutor(b.workers) as pool:
             fs = {t.id: pool.submit(b._ping, t.src or topo.vantage, t.ip, t.id, count, 0.2) for t in ts}
             pings = {tid: f.result() for tid, f in fs.items()}
-    silent = [t for t in ts if t.id in pings and pings[t.id].recv == 0]
-    rep["answered"], rep["total"] = len(ts) - len(silent), len(ts)
+    silent = [t for t in ts if t.id in pings and pings[t.id].sent and pings[t.id].recv == 0]
+    failed = [t for t in ts if t.id in pings and not pings[t.id].sent]      # ping 没跑成：不是地址不应答，--skip-silent 不适用
+    rep["answered"], rep["total"] = sum(1 for p in pings.values() if p.recv > 0), len(ts)
     rep["silent"] = [dict(id=t.id, ip=t.ip, node=t.node, kind=t.kind, link=t.link) for t in silent]
+    rep["failed"] = [dict(id=t.id, ip=t.ip, node=t.src or topo.vantage) for t in failed]
     if silent:
         rep["problems"].append(f"{len(silent)} 个地址不应答：" + ", ".join(f"{t.ip}（{t.id}）" for t in silent))
+    if failed:
+        rep["problems"].append(f"{len(failed)} 个目标的 ping 没能运行（命令失败或探测端点不可用）："
+                               + ", ".join(f"{t.ip}（{t.id}）" for t in failed))
     nm = [t.id for t in topo.targets() if not b._measurable(t)]
     rep["not_measured"] = nm
     if nm:
-        rep["notes"].append(f"{len(nm)} 个盲区链路目标不测（需要设备原生 NQA / IP SLA，或把发起端列入 --endpoints）："
-                            + ", ".join(nm))
+        rep["notes"].append(f"{len(nm)} 个盲区链路目标不测（把发起端列入 --endpoints 即可测；读取设备原生 NQA / IP SLA "
+                            "结果尚未实现，计划 0.3）：" + ", ".join(nm))
     # traceroute：权限与路径是否与拓扑一致；按预算定速，不触发设备的 ICMP 限速
     alive = [t for t in ts if t.id in pings and pings[t.id].recv > 0 and t.src is None]
     gap = b.plan.interval_s / b.trace_per_round if b.trace_per_round else 0.0
@@ -437,7 +561,6 @@ def preflight(b: LiveBackend, count: int = 3) -> dict:
             if cost:
                 rep["notes"].append("LSDB 开销与拓扑不同的链路（基线学习以实测为准）：" + ", ".join(cost))
     # 探测端点
-    links = [l.id for l in topo.links if b.can_bw(l.id)]
     rep["probe_links"] = links
     rep["endpoints"] = {}
     for lid in links:
@@ -445,6 +568,19 @@ def preflight(b: LiveBackend, count: int = 3) -> dict:
         rep["endpoints"][lid] = None if bw != bw else round(bw, 1)
         if bw != bw:
             rep["problems"].append(f"{lid} 的探测端点不可用（包列带宽估计失败）")
+        l = topo.link(lid)                      # 精测的短间隔 ping：普通用户在老版本 iputils 上会被拒绝（返回码 2）
+        src, dst = (l.a, l.b) if topo.nodes[l.a].agent else (l.b, l.a)
+        i = b.plan.deep_ping_interval_s
+        if not b._ping(src, l.ip_of(dst), lid, DEEP_CHECK_PINGS, i).sent:
+            rep["problems"].append(f"{lid} 的精测不可用：{src} 上 {i:g} s 间隔的 ping 运行失败，"
+                                   "见 docs/deployment.md 的 ICMP permissions")
+    for n in sorted({x for lid in links for x in (topo.link(lid).a, topo.link(lid).b)}):
+        try:
+            rc = b.ex.run(n, limited(["iperf3", "--version"], 5), quiet=True, timeout=8)[0]
+        except OSError:
+            rc = 127
+        if rc != 0:
+            rep["problems"].append(f"{n} 上运行不了 iperf3 或 timeout（精测需要）")
     if not links:
         rep["notes"].append("未配置探测端点（--endpoints）：带宽估计与精测按缺测处理")
     rep["ok"] = not rep["problems"]
@@ -456,6 +592,8 @@ def format_preflight(rep: dict) -> str:
     for s in rep["silent"]:
         where = f"链路 {s['link']}" if s["link"] else "环回"
         out.append(f"  不应答：{s['ip']}  {s['id']}（设备 {s['node']}，{where}）")
+    for s in rep.get("failed", ()):
+        out.append(f"  ping 没能运行：{s['ip']}  {s['id']}（发起设备 {s['node']}）")
     for m in rep["path_mismatch"][:8]:
         out.append(f"  路径不同：{m['id']} 实测 {'>'.join(m['measured'])}，拓扑 {'>'.join(m['expected'])}")
     out.append(f"LSDB：{rep['lsdb']}")
