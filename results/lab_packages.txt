@@ -1,0 +1,8 @@
+# Debian packages of the external programs in the lab image (edgefdl-lab:latest, scripts/lab/Dockerfile),
+# printed on 2026-10-31 by: docker run --rm edgefdl-lab:latest dpkg-query -W frr iproute2 iperf3 traceroute iputils-ping procps
+frr	8.4.4-1.1~deb12u2
+iperf3	3.12-1+deb12u2
+iproute2	6.1.0-3
+iputils-ping	3:20221126-1+deb12u1
+procps	2:4.0.2-3
+traceroute	1:2.1.2-1

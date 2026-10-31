@@ -31,6 +31,23 @@ on the CPU). The HTTP server, REST API, Syslog and Webhook sinks use only the Py
 library.
 
 
+Python packages installed as dependencies of PyTorch (not imported by EdgeFDL)
+------------------------------------------------------------------------------
+filelock                          MIT (the version in requirements-lock.txt)
+fsspec                            BSD-3-Clause
+Jinja2, MarkupSafe                BSD-3-Clause
+mpmath, sympy                     BSD-3-Clause
+networkx                          BSD-3-Clause
+setuptools (Python >= 3.12)       MIT
+typing_extensions                 PSF-2.0
+
+requirements-lock.txt holds the exact versions and hashes of all these packages for Python 3.12 on
+linux/amd64. docs/dependencies.md lists them with versions and licenses, together with the native
+libraries inside the NumPy and PyTorch wheels (among them the GCC runtime libraries, under
+GPL-3.0-or-later WITH GCC-exception-3.1 and LGPL-2.1-or-later). tools/dev/licenses.py checks the
+installed metadata.
+
+
 External programs invoked as separate processes (not linked, not distributed)
 -----------------------------------------------------------------------------
 The `netns` and `lxd` backends of the equivalent virtual network, and the real-stack lab container,
@@ -43,7 +60,7 @@ FRRouting (zebra, ospfd, vtysh)   GPL-2.0-or-later
 iproute2 (ip, tc)                 GPL-2.0
 iputils (ping)                    BSD-3-Clause for ping; the iputils package also contains tools
                                       under GPL-2.0-or-later
-traceroute                        GPL-2.0
+traceroute                        GPL-2.0-or-later; its libsupp library LGPL-2.1-or-later
 iperf3                            BSD-3-Clause
 procps (sysctl)                   GPL-2.0-or-later
 LXD (lxc command-line client)     AGPL-3.0-only since LXD 5.20 (Apache-2.0 up to LXD 5.19);
@@ -56,5 +73,10 @@ Development and test environment (not part of EdgeFDL, not distributed)
 scripts/lab/Dockerfile describes a local test image that `scripts/lab.sh build` builds on the
 user's machine from the Debian 12 base image (debian:bookworm-slim) and Debian packages (frr,
 iperf3, traceroute, iproute2, iputils-ping, procps, python3, python3-yaml, python3-numpy,
-ca-certificates). Each package keeps its own license as recorded by Debian. No image is published
-or distributed by the EdgeFDL project. Docker itself is used only to build and run this image.
+ca-certificates). Each package keeps its own license as recorded by Debian. Dockerfile and
+compose.yaml describe a demonstration image that `docker compose up` builds on the user's machine
+from the Python base image (python:3.12-slim-bookworm: CPython under PSF-2.0, Debian 12 packages
+under their own licenses) and the packages of requirements-lock.txt; it contains none of the
+external programs above. No image is published or distributed by the EdgeFDL project. Docker itself
+is used only to build and run these images. The tools in requirements-dev.txt (ruff, coverage.py,
+build) and matplotlib (tools/figures/) are used only during development.
