@@ -334,8 +334,8 @@ the lock file.
 | `EDGEFDL_PIP_INDEX` | `https://pypi.org/simple` | PyPI index for the build, for a mirror |
 | `EDGEFDL_PIP_FIND_LINKS` | empty | Additional source of wheels for the build, for a mirror of the PyTorch CPU wheels |
 
-Mirrors do not change what is installed, because pip checks every file against the hash in the lock file. For example,
-in mainland China:
+Mirrors do not change what is installed: the base image is pinned by digest and pip checks every file against the hash
+in the lock file. For example, in mainland China:
 
 ```bash
 export EDGEFDL_REGISTRY=docker.1ms.run/library
